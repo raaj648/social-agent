@@ -43,6 +43,11 @@ function PagesPageInner() {
   const [connectingWaFb, setConnectingWaFb] = useState(false);
   const [waError, setWaError] = useState('');
   const [confirmDisconnect, setConfirmDisconnect] = useState<{ type: 'page' | 'whatsapp'; id: string } | null>(null);
+  const [showAddPages, setShowAddPages] = useState(false);
+  const [availablePages, setAvailablePages] = useState<Array<{ page_id: string; page_name: string; page_category: string | null; picture_url: string | null }>>([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [connectingPages, setConnectingPages] = useState(false);
+  const [selectedAvailablePages, setSelectedAvailablePages] = useState<Set<string>>(new Set());
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
   const searchParams = useSearchParams();
@@ -127,6 +132,66 @@ async function handleFacebookConnect() {
     }
     window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${state}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
 }
+
+  async function handleOpenAddPages() {
+    setShowAddPages(true);
+    setLoadingAvailable(true);
+    setAvailablePages([]);
+    setSelectedAvailablePages(new Set());
+    try {
+      const res = await fetch('/api/pages/available');
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to load available pages');
+        setShowAddPages(false);
+        return;
+      }
+      setAvailablePages(data.pages || []);
+      if (!data.pages || data.pages.length === 0) {
+        toast.info('No new pages available to connect');
+      }
+    } catch {
+      toast.error('Failed to load available pages');
+      setShowAddPages(false);
+    } finally {
+      setLoadingAvailable(false);
+    }
+  }
+
+  async function handleConnectSelectedPages() {
+    const selected = availablePages.filter((p) => selectedAvailablePages.has(p.page_id));
+    if (selected.length === 0) return;
+    setConnectingPages(true);
+    try {
+      const res = await fetch('/api/pages/connect-more', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pages: selected }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAddPages(false);
+        toast.success(`Connected ${data.connected} page(s) successfully`);
+        if (data.errors > 0) toast.error(`${data.errors} page(s) failed to connect`);
+        loadPages();
+      } else {
+        toast.error(data.error || 'Failed to connect pages');
+      }
+    } catch {
+      toast.error('Failed to connect pages');
+    } finally {
+      setConnectingPages(false);
+    }
+  }
+
+  function toggleAvailablePage(pageId: string) {
+    setSelectedAvailablePages((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  }
 
   async function handleLinkInstagram(pageId: string) {
     setLinkingInstagram(pageId);
@@ -242,10 +307,17 @@ async function handleFacebookConnect() {
 
       {/* Facebook Pages */}
       <div>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Facebook className="h-5 w-5 text-blue-600" />
-          Facebook Pages
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Facebook className="h-5 w-5 text-blue-600" />
+            Facebook Pages
+          </h2>
+          {pages.length > 0 && (
+            <Button onClick={handleOpenAddPages} variant="outline" size="sm" className="gap-2 border-blue-600 text-blue-600 hover:bg-blue-50">
+              <Plus className="h-4 w-4" /> Add More Pages
+            </Button>
+          )}
+        </div>
         {pages.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center gap-4 py-16">
@@ -501,6 +573,94 @@ async function handleFacebookConnect() {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add More Pages Modal */}
+      {showAddPages && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !connectingPages && setShowAddPages(false)}>
+          <div className="w-full max-w-lg max-h-[80vh] rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
+                  <Facebook className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold">Add More Pages</h3>
+              </div>
+              <button onClick={() => !connectingPages && setShowAddPages(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {loadingAvailable ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : availablePages.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 py-16">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100">
+                  <CheckCircle2 className="h-7 w-7 text-blue-600" />
+                </div>
+                <p className="font-medium text-center">No new pages available</p>
+                <p className="text-sm text-muted-foreground text-center">All your Facebook pages are already connected.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-4 shrink-0">
+                  Select the pages you want to add:
+                </p>
+                <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+                  {availablePages.map((page) => (
+                    <button
+                      key={page.page_id}
+                      onClick={() => toggleAvailablePage(page.page_id)}
+                      className={`w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                        selectedAvailablePages.has(page.page_id)
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-input hover:bg-muted/50'
+                      }`}
+                    >
+                      {page.picture_url ? (
+                        <img src={page.picture_url} alt={page.page_name} className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                          <Facebook className="h-5 w-5" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{page.page_name}</p>
+                        {page.page_category && (
+                          <p className="text-xs text-muted-foreground truncate">{page.page_category}</p>
+                        )}
+                      </div>
+                      <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                        selectedAvailablePages.has(page.page_id)
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-muted-foreground/30'
+                      }`}>
+                        {selectedAvailablePages.has(page.page_id) && (
+                          <CheckCircle2 className="h-4 w-4 text-white" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-3 pt-4 shrink-0 border-t border-border mt-4">
+                  <Button variant="outline" onClick={() => setShowAddPages(false)} disabled={connectingPages} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConnectSelectedPages}
+                    disabled={connectingPages || selectedAvailablePages.size === 0}
+                    className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {connectingPages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {connectingPages ? 'Connecting...' : `Connect (${selectedAvailablePages.size})`}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
