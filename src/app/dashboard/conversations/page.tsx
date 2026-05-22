@@ -203,7 +203,7 @@ export default function ConversationsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <CardTitle className="text-base truncate">
-                          {conv.sender_name || conv.sender_id}
+                          {conv.sender_name && conv.sender_name !== conv.sender_id ? conv.sender_name : 'Customer'}
                         </CardTitle>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {formatDate(conv.last_message_at)}

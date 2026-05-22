@@ -153,6 +153,19 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     sent_via_ai: false,
   });
 
+  // Auto-resume check: if paused but auto_resume_at has passed, unpause
+  if (conversation.is_ai_paused && conversation.auto_resume_at) {
+    const resumeAt = new Date(conversation.auto_resume_at).getTime();
+    if (Date.now() >= resumeAt) {
+      await supabase.from('conversations').update({
+        is_ai_paused: false,
+        ai_enabled: true,
+        auto_resume_at: null,
+      }).eq('id', conversationId);
+      conversation.is_ai_paused = false;
+    }
+  }
+
   // If AI is paused, stop here (message already saved above)
   if (conversation.is_ai_paused) return;
 
@@ -259,11 +272,28 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       timezone: 'UTC',
       agent_display_name: 'Support Agent', ai_agent_name: 'AI Assistant',
       human_handoff_enabled: true, human_handoff_message: '{agent_name} has joined the chat',
-      show_handoff_on_pause: false,
+      show_handoff_on_pause: false, auto_resume_minutes: null,
+      business_name: null, agent_role: 'Sales Agent',
       id: '', user_id: '', page_id: null, instagram_id: null, system_prompt: null,
     } as AISettings;
   } else if (!aiSettings.is_active) {
     return;
+  }
+
+  // Auto-detect business_name from the connected platform if not set yet
+  if (!aiSettings.business_name) {
+    let detectedName: string | null = null;
+    if (platform === 'messenger') {
+      detectedName = channel.page_name || null;
+    } else if (platform === 'instagram') {
+      detectedName = channel.ig_name || channel.ig_username || null;
+    } else if (platform === 'whatsapp') {
+      detectedName = channel.business_name || null;
+    }
+    if (detectedName) {
+      await supabase.from('ai_settings').update({ business_name: detectedName }).eq('id', aiSettings.id);
+      aiSettings.business_name = detectedName;
+    }
   }
 
   const lowerMessage = messageText.toLowerCase();

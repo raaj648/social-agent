@@ -14,6 +14,19 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { Conversation, Message } from '@/types';
 
+interface WhatsAppAccount {
+  id: string;
+  phone_number_id: string;
+  phone_number: string;
+  business_name: string | null;
+  waba_id: string | null;
+  is_active: boolean;
+}
+
+interface ConversationWithWhatsApp extends Conversation {
+  whatsapp_accounts?: WhatsAppAccount;
+}
+
 export default function ConversationDetailPage({
   params,
 }: {
@@ -33,22 +46,14 @@ export default function ConversationDetailPage({
   const supabase = createClient();
   const router = useRouter();
 
-  usePageTitle(conversation?.sender_name || 'Conversation');
+  const pageTitle = conversation
+    ? (conversation.sender_name && conversation.sender_name !== conversation.sender_id
+      ? conversation.sender_name
+      : 'Customer')
+    : 'Conversation';
+  usePageTitle(pageTitle);
 
   useEffect(() => { loadData(); }, []);
-
-  interface WhatsAppAccount {
-  id: string;
-  phone_number_id: string;
-  phone_number: string;
-  business_name: string | null;
-  waba_id: string | null;
-  is_active: boolean;
-}
-
-interface ConversationWithWhatsApp extends Conversation {
-  whatsapp_accounts?: WhatsAppAccount;
-}
 
 async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -72,6 +77,13 @@ async function loadData() {
     if (!conv) { router.push('/dashboard/conversations'); return; }
     setConversation(conv as ConversationWithWhatsApp);
 
+    if (conv.unread_count > 0) {
+      await supabase
+        .from('conversations')
+        .update({ unread_count: 0 })
+        .eq('id', params.id);
+    }
+
     const { data: msgs } = await supabase
       .from('messages')
       .select('*')
@@ -93,8 +105,9 @@ async function loadData() {
     await supabase.from('conversations').update({
       is_ai_paused: newPaused,
       ai_enabled: !newPaused,
+      auto_resume_at: null,
     }).eq('id', conversation.id);
-    setConversation(prev => prev ? { ...prev, is_ai_paused: newPaused, ai_enabled: !newPaused } : prev);
+    setConversation(prev => prev ? { ...prev, is_ai_paused: newPaused, ai_enabled: !newPaused, auto_resume_at: null } : prev);
     setToggling(false);
   }
 
@@ -195,6 +208,9 @@ async function loadData() {
   if (!conversation) return null;
 
   const isAiPaused = conversation.is_ai_paused;
+  const displayName = conversation.sender_name && conversation.sender_name !== conversation.sender_id
+    ? conversation.sender_name
+    : 'Customer';
 
   return (
     <div className="space-y-6">
@@ -223,9 +239,9 @@ async function loadData() {
           <div className="flex-1 min-w-0">
            <div className="flex items-start justify-between gap-4">
                <div>
-                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                   {conversation.sender_name || conversation.sender_id}
-                 </h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {displayName}
+                  </h1>
                {conversation.platform === 'whatsapp' && (
                  <div className="space-y-1">
                    <p className="text-sm font-medium">

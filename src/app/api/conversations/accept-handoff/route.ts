@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const { data: aiSettings } = await adminSupabase
       .from('ai_settings')
-      .select('agent_display_name, human_handoff_message, show_handoff_on_pause')
+      .select('agent_display_name, human_handoff_message, show_handoff_on_pause, auto_resume_minutes')
       .eq('user_id', user.id)
       .is('page_id', null)
       .is('instagram_id', null)
@@ -73,11 +73,18 @@ export async function POST(request: NextRequest) {
       sent_via_ai: true,
     });
 
-    await adminSupabase.from('conversations').update({
+    const updateData: Record<string, unknown> = {
       is_ai_paused: true,
       ai_enabled: false,
       is_urgent: false,
-    }).eq('id', conversationId);
+    };
+
+    if (aiSettings?.auto_resume_minutes) {
+      const autoResumeAt = new Date(Date.now() + aiSettings.auto_resume_minutes * 60 * 1000).toISOString();
+      updateData.auto_resume_at = autoResumeAt;
+    }
+
+    await adminSupabase.from('conversations').update(updateData).eq('id', conversationId);
 
     return NextResponse.json({ success: true, message: handoffMsg });
   } catch (error) {

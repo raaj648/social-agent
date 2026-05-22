@@ -1,9 +1,12 @@
 export function buildSystemPrompt(
   businessInfo: { name: string; description?: string },
   knowledgeBase: Array<{ category: string; title: string; content: string }>,
-  aiSettings: { system_prompt?: string | null; greeting_message?: string | null },
+  aiSettings: { system_prompt?: string | null; greeting_message?: string | null; agent_display_name?: string; ai_agent_name?: string; agent_role?: string; business_name?: string | null },
   masterPrompt?: string | null
 ): string {
+  const agentName = aiSettings.agent_display_name || aiSettings.ai_agent_name || 'Support Agent';
+  const agentRole = aiSettings.agent_role || 'Sales Agent';
+  const bizName = aiSettings.business_name || businessInfo.name || 'the business';
   const knowledgeContext = knowledgeBase
     .map((item) => `[${item.category.toUpperCase()}] ${item.title}: ${item.content}`)
     .join('\n');
@@ -14,10 +17,10 @@ export function buildSystemPrompt(
 
   const masterPrefix = masterPrompt ? `${masterPrompt}\n\n---\n\n` : '';
 
-  return `${masterPrefix}You are an AI customer support assistant for "${businessInfo.name}". Your role is to provide helpful, accurate, and friendly responses to customer inquiries.
+  return `${masterPrefix}You are ${agentName}, ${agentRole} at "${bizName}". Your role is to provide helpful, accurate, and friendly responses to customer inquiries.
 
 ## Business Context
-- Business Name: ${businessInfo.name}
+- Business Name: ${bizName}
 ${businessInfo.description ? `- Description: ${businessInfo.description}` : ''}
 
 ## Knowledge Base

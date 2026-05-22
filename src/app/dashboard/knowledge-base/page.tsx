@@ -37,6 +37,9 @@ export default function KnowledgeBasePage() {
     human_handoff_enabled: boolean;
     human_handoff_message: string;
     show_handoff_on_pause: boolean;
+    auto_resume_minutes: number | null;
+    business_name: string | null;
+    agent_role: string;
     saving: boolean;
   }>({
     agent_display_name: 'Support Agent',
@@ -44,6 +47,9 @@ export default function KnowledgeBasePage() {
     human_handoff_enabled: true,
     human_handoff_message: '{agent_name} has joined the chat',
     show_handoff_on_pause: false,
+    auto_resume_minutes: null,
+    business_name: null,
+    agent_role: 'Sales Agent',
     saving: false,
   });
   const supabase = createClient();
@@ -55,7 +61,7 @@ export default function KnowledgeBasePage() {
     if (!user) return;
     const { data } = await supabase
       .from('ai_settings')
-      .select('agent_display_name, ai_agent_name, human_handoff_enabled, human_handoff_message, show_handoff_on_pause')
+      .select('agent_display_name, ai_agent_name, human_handoff_enabled, human_handoff_message, show_handoff_on_pause, auto_resume_minutes, business_name, agent_role')
       .eq('user_id', user.id)
       .is('page_id', null)
       .is('instagram_id', null)
@@ -84,6 +90,9 @@ export default function KnowledgeBasePage() {
         human_handoff_enabled: agentSettings.human_handoff_enabled,
         human_handoff_message: agentSettings.human_handoff_message,
         show_handoff_on_pause: agentSettings.show_handoff_on_pause,
+        auto_resume_minutes: agentSettings.auto_resume_minutes,
+        business_name: agentSettings.business_name,
+        agent_role: agentSettings.agent_role,
       }).eq('id', existing.id);
     } else {
       // Fix: Insert new settings if user doesn't have an ai_settings row yet
@@ -94,6 +103,9 @@ export default function KnowledgeBasePage() {
         human_handoff_enabled: agentSettings.human_handoff_enabled,
         human_handoff_message: agentSettings.human_handoff_message,
         show_handoff_on_pause: agentSettings.show_handoff_on_pause,
+        auto_resume_minutes: agentSettings.auto_resume_minutes,
+        business_name: agentSettings.business_name,
+        agent_role: agentSettings.agent_role,
       });
     }
     setAgentSettings(prev => ({ ...prev, saving: false }));
@@ -347,6 +359,28 @@ export default function KnowledgeBasePage() {
               <Input value={agentSettings.ai_agent_name} onChange={(e) => setAgentSettings(prev => ({ ...prev, ai_agent_name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
+              <label className="text-sm font-medium">Business Name</label>
+              <p className="text-xs text-muted-foreground">Auto-detected from connected platform, editable</p>
+              <Input value={agentSettings.business_name ?? ''} onChange={(e) => setAgentSettings(prev => ({ ...prev, business_name: e.target.value || null }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Agent Role</label>
+              <p className="text-xs text-muted-foreground">Defines how the AI presents itself to customers</p>
+              <select
+                className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:ring-2 focus:ring-blue-500/20"
+                value={agentSettings.agent_role}
+                onChange={(e) => setAgentSettings(prev => ({ ...prev, agent_role: e.target.value }))}
+              >
+                <option value="Sales Agent">Sales Agent — Promotes products, answers questions, closes sales. Best for e-commerce & product businesses.</option>
+                <option value="Virtual Assistant">Virtual Assistant — Handles any type of inquiry without a fixed role. Best for diverse businesses.</option>
+                <option value="Customer Support Agent">Customer Support Agent — After-sales support, troubleshooting, returns. Best for post-purchase service.</option>
+                <option value="Order Taker">Order Taker — Collects orders simply without upselling. Best for order-only businesses.</option>
+                <option value="Booking Agent">Booking Agent — Manages reservations. Best for restaurants, salons, hotels.</option>
+                <option value="Appointment Scheduler">Appointment Scheduler — Handles consultation bookings. Best for clinics, consultants.</option>
+                <option value="FAQ Assistant">FAQ Assistant — Answers common questions concisely. Best for high-volume repetitive queries.</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-sm font-medium">Handoff Message Template</label>
               <p className="text-xs text-muted-foreground">Use {'{agent_name}'} as placeholder</p>
               <Input value={agentSettings.human_handoff_message} onChange={(e) => setAgentSettings(prev => ({ ...prev, human_handoff_message: e.target.value }))} />
@@ -360,6 +394,17 @@ export default function KnowledgeBasePage() {
                 <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={agentSettings.show_handoff_on_pause} onChange={(e) => setAgentSettings(prev => ({ ...prev, show_handoff_on_pause: e.target.checked }))} />
                 <span className="text-sm">Show handoff message when manually pausing AI</span>
               </label>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Auto-resume AI after (minutes)</label>
+              <p className="text-xs text-muted-foreground">Leave empty to keep AI paused until manually resumed</p>
+              <Input
+                type="number"
+                min={1}
+                placeholder="e.g. 30"
+                value={agentSettings.auto_resume_minutes ?? ''}
+                onChange={(e) => setAgentSettings(prev => ({ ...prev, auto_resume_minutes: e.target.value ? parseInt(e.target.value) : null }))}
+              />
             </div>
           </div>
         </CardContent>

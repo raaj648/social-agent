@@ -58,6 +58,7 @@ export interface Conversation {
   is_ai_paused: boolean;
   is_urgent: boolean;
   requested_human_at: string | null;
+  auto_resume_at: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -110,6 +111,9 @@ export interface AISettings {
   human_handoff_enabled: boolean;
   human_handoff_message: string;
   show_handoff_on_pause: boolean;
+  auto_resume_minutes: number | null;
+  business_name: string | null;
+  agent_role: string;
 }
 
 export interface UsageLog {
