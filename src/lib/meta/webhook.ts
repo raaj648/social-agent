@@ -388,21 +388,24 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   }
   masterPrompt = platformCfg?.value as string || null;
 
-  const { data: knowledgeBase } = await supabase
-    .from('knowledge_base')
-    .select('category, title, content, platform, platform_ref_id')
-    .eq('user_id', channel.user_id)
-    .eq('is_active', true)
-    .order('sort_order');
+  // Fetch knowledge base using junction table
+  const { data: kbLinks } = await supabase
+    .from('knowledge_base_platforms')
+    .select('kb_id')
+    .eq('platform', platform)
+    .or(`platform_ref_id.eq.${channel.id},platform_ref_id.is.null`);
 
-  const filteredKB = (knowledgeBase || []).filter(item => {
-    if (!item.platform || item.platform === 'all') return true;
-    if (item.platform !== platform) return false;
-    if (item.platform_ref_id) {
-      return item.platform_ref_id === channel.id;
-    }
-    return true;
-  });
+  const kbIds = kbLinks?.map(r => r.kb_id) || [];
+  const { data: knowledgeBase } = kbIds.length > 0
+    ? await supabase
+        .from('knowledge_base')
+        .select('category, title, content')
+        .eq('user_id', channel.user_id)
+        .eq('is_active', true)
+        .in('id', kbIds)
+        .order('sort_order')
+    : { data: [] };
+  const filteredKB = knowledgeBase || [];
 
   const { data: recentMessages } = await supabase
     .from('messages')
@@ -471,6 +474,22 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       },
     });
   }
+
+  // Add search_products tool (always available)
+  baseTools.push({
+    type: 'function',
+    function: {
+      name: 'search_products',
+      description: 'Search for products by name or keyword in the product catalog. Call this when a customer asks about specific products, prices, or availability.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The product search query (name or keyword)' },
+        },
+        required: ['query'],
+      },
+    },
+  });
 
   const tools = baseTools.length > 0 ? baseTools : undefined;
 
@@ -545,6 +564,53 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         content: confirmationMsg,
         sent_via_ai: true,
       });
+    } else if (toolCall && toolCall.function.name === 'search_products') {
+      const args = JSON.parse(toolCall.function.arguments);
+      const searchQuery = args.query || '';
+
+      let searchReq = supabase
+        .from('products')
+        .select('name, description, price, category, image_url')
+        .eq('user_id', channel.user_id)
+        .eq('is_active', true)
+        .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
+        .or(`platform_ref_id.eq.${channel.id},platform_ref_id.is.null`);
+
+      const { data: products } = await searchReq.limit(10);
+
+      const productList = products && products.length > 0
+        ? products.map((p: any) =>
+            `- ${p.name}${p.price ? ' ($' + p.price + ')' : ''}${p.description ? ': ' + p.description : ''}`
+          ).join('\n')
+        : 'No products found for "' + searchQuery + '".';
+
+      const toolResult = '## Product Search Results for "' + searchQuery + '"\n' + productList;
+
+      const followUpMessages = [
+        ...completionMessages,
+        { role: 'assistant', content: null, tool_calls: [toolCall] },
+        { role: 'tool', tool_call_id: toolCall.id, content: toolResult },
+      ];
+
+      const followUp = await createCompletion({
+        model,
+        messages: followUpMessages,
+        temperature: aiSettings.temperature || 0.7,
+        max_tokens: aiSettings.max_tokens || 500,
+      }, providerConfig);
+
+      const followUpContent = followUp.choices?.[0]?.message?.content;
+      if (followUpContent) {
+        const sent = await sendPlatformReply(platform, senderId, followUpContent, accessToken, channel);
+        if (sent) {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: followUpContent,
+            sent_via_ai: true,
+          });
+        }
+      }
     } else {
       const aiReply = choice?.message?.content;
       if (!aiReply) {

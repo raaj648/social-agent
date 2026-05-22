@@ -3,11 +3,12 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  MessageSquare, Facebook, Instagram, MessageCircle, Inbox, Archive, Search, RefreshCw, Loader2, Trash2
+  MessageSquare, Facebook, Instagram, MessageCircle, Inbox, Archive, Search, RefreshCw, Loader2, Trash2, CheckCircle
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -16,6 +17,7 @@ import type { Conversation } from '@/types';
 
 export default function ConversationsPage() {
   usePageTitle('Conversations');
+  const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [lastMessages, setLastMessages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,7 @@ export default function ConversationsPage() {
   const [search, setSearch] = useState('');
   const [erroredAvatars, setErroredAvatars] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const supabase = createClient();
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
@@ -102,6 +105,20 @@ export default function ConversationsPage() {
     setConfirmDelete(null);
     await supabase.from('conversations').delete().eq('id', convId);
     setConversations(prev => prev.filter(c => c.id !== convId));
+  }
+
+  async function handleAccept(convId: string) {
+    setAcceptingId(convId);
+    try {
+      await fetch('/api/conversations/accept-handoff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: convId }),
+      });
+      router.push(`/dashboard/conversations/${convId}`);
+    } catch {
+      setAcceptingId(null);
+    }
   }
 
   const filtered = useMemo(() => {
@@ -239,6 +256,19 @@ export default function ConversationsPage() {
                 </Card>
               </Link>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {conv.is_urgent && conv.requested_human_at && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleAccept(conv.id);
+                    }}
+                    disabled={acceptingId === conv.id}
+                    className="rounded-lg p-1.5 bg-green-100 hover:bg-green-200 text-green-700 hover:text-green-800"
+                    title="Accept handoff"
+                  >
+                    {acceptingId === conv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  </button>
+                )}
                 <button
                   onClick={(e) => {
                     e.preventDefault();

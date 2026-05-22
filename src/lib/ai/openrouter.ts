@@ -9,9 +9,20 @@ interface ToolDef {
   };
 }
 
+interface ChatMessage {
+  role: string;
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type?: string;
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
 interface CompletionParams {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
   tools?: ToolDef[];

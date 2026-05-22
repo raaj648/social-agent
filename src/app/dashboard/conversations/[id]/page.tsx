@@ -8,7 +8,8 @@ import { formatDate } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  MessageSquare, Bot, User, ArrowLeft, Clock, PauseCircle, PlayCircle, Loader2, Send, Trash2
+  MessageSquare, Bot, User, ArrowLeft, Clock, PauseCircle, PlayCircle, Loader2, Send, Trash2, CheckCircle,
+  Facebook, Instagram, MessageCircle
 } from 'lucide-react';
 import { usePageTitle } from '@/lib/use-page-title';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -23,8 +24,20 @@ interface WhatsAppAccount {
   is_active: boolean;
 }
 
-interface ConversationWithWhatsApp extends Conversation {
+interface ConnectedPageInfo {
+  picture_url: string | null;
+  page_name: string | null;
+}
+
+interface InstagramAccountInfo {
+  ig_profile_pic: string | null;
+  ig_username: string | null;
+}
+
+interface ConversationWithAccounts extends Conversation {
   whatsapp_accounts?: WhatsAppAccount;
+  connected_pages?: ConnectedPageInfo;
+  instagram_accounts?: InstagramAccountInfo;
 }
 
 export default function ConversationDetailPage({
@@ -57,6 +70,13 @@ export default function ConversationDetailPage({
     return conv.sender_name;
   }
 
+  function getAgentAvatar(conv: ConversationWithAccounts | null): string | null {
+    if (!conv) return null;
+    if (conv.platform === 'messenger') return conv.connected_pages?.picture_url || null;
+    if (conv.platform === 'instagram') return conv.instagram_accounts?.ig_profile_pic || null;
+    return null;
+  }
+
   const pageTitle = conversation ? getDisplayName(conversation) : 'Conversation';
   usePageTitle(pageTitle);
 
@@ -75,6 +95,14 @@ async function loadData() {
           phone_number,
           business_name,
           waba_id
+        ),
+        connected_pages:page_id (
+          picture_url,
+          page_name
+        ),
+        instagram_accounts:instagram_id (
+          ig_profile_pic,
+          ig_username
         )
       `)
       .eq('id', params.id)
@@ -82,7 +110,7 @@ async function loadData() {
       .single();
 
     if (!conv) { router.push('/dashboard/conversations'); return; }
-    setConversation(conv as ConversationWithWhatsApp);
+    setConversation(conv as ConversationWithAccounts);
 
     if (conv.unread_count > 0) {
       await supabase
@@ -217,231 +245,236 @@ async function loadData() {
 
   const isAiPaused = conversation.is_ai_paused;
   const displayName = getDisplayName(conversation);
+  const agentAvatar = getAgentAvatar(conversation as ConversationWithAccounts);
+
+  const platformIcons: Record<string, React.ReactNode> = {
+    messenger: <Facebook className="h-3.5 w-3.5 text-blue-600" />,
+    instagram: <Instagram className="h-3.5 w-3.5 text-pink-600" />,
+    whatsapp: <MessageCircle className="h-3.5 w-3.5 text-green-600" />,
+  };
+
+  const platformBadgeColors: Record<string, string> = {
+    messenger: 'bg-blue-500',
+    instagram: 'bg-pink-500',
+    whatsapp: 'bg-green-500',
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* Back link */}
       <Link
         href="/dashboard/conversations"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to conversations
       </Link>
 
-      <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-indigo-950 border border-blue-100 dark:border-blue-900 p-6">
-        <div className="flex items-start gap-4">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Customer avatar */}
           {conversation.sender_picture && !avatarError ? (
             <img
               src={conversation.sender_picture}
-              alt={conversation.sender_name || conversation.sender_id}
-              className="h-14 w-14 shrink-0 rounded-xl object-cover shadow-md"
+              alt={displayName}
+              className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white dark:ring-gray-900"
               onError={() => setAvatarError(true)}
             />
           ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md">
-              <MessageSquare className="h-7 w-7" />
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${platformBadgeColors[conversation.platform] || 'bg-blue-500'} text-white`}>
+              <User className="h-5 w-5" />
             </div>
           )}
+
+          {/* Name + platform info */}
           <div className="flex-1 min-w-0">
-           <div className="flex items-start justify-between gap-4">
-               <div>
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {displayName}
-                  </h1>
-               {conversation.platform === 'whatsapp' && (
-                 <div className="space-y-1">
-                   <p className="text-sm font-medium">
-                     {(conversation as any).whatsapp_accounts?.business_name || 'WhatsApp Business'}
-                   </p>
-                   {(conversation as any).whatsapp_accounts?.phone_number && (
-                     <p className="text-xs text-muted-foreground">
-                       {(conversation as any).whatsapp_accounts?.phone_number}
-                     </p>
-                   )}
-                 </div>
-               )}
-               <p className="text-muted-foreground capitalize flex items-center gap-2 mt-1">
-                 <span className={`inline-block h-2 w-2 rounded-full ${
-                   conversation.platform === 'instagram' ? 'bg-pink-500' :
-                   conversation.platform === 'whatsapp' ? 'bg-green-500' : 'bg-blue-500'
-                 }`} />
-                 {conversation.platform} conversation
-                 {conversation.unread_count > 0 && (
-                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                     {conversation.unread_count} unread
-                   </span>
-                 )}
-               </p>
-             </div>
-
-              {/* AI Pause Toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggleAiPause}
-                  disabled={toggling}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                    isAiPaused
-                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
-                      : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300'
-                  }`}
-                >
-                  {toggling ? <Loader2 className="h-4 w-4 animate-spin" /> : isAiPaused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
-                  {isAiPaused ? 'Resume AI' : 'Pause AI'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  disabled={deleting}
-                  className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-all"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            {/* 24-hour window indicator */}
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <Clock className="h-4 w-4 text-muted-foreground" />
+            <h1 className="text-base font-bold text-gray-900 dark:text-white truncate leading-tight">
+              {displayName}
+            </h1>
+            <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground mt-0.5">
+              <span className="flex items-center gap-1 capitalize">
+                {platformIcons[conversation.platform]}
+                {conversation.platform}
+              </span>
+              <span className="text-gray-300 dark:text-gray-600">•</span>
               {isWithin24h ? (
-                <span className="text-green-600 dark:text-green-400 font-medium">
-                  Free messaging window: {hoursRemaining}h remaining
-                </span>
+                <span className="text-green-600 dark:text-green-400 font-medium">{hoursRemaining}h remaining</span>
               ) : (
-                <span className="text-amber-600 dark:text-amber-400 font-medium">
-                  Outside 24h window — next user message opens new window
+                <span className="text-amber-600 dark:text-amber-400">Outside 24h</span>
+              )}
+              {conversation.unread_count > 0 && (
+                <span className="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                  {conversation.unread_count} new
                 </span>
               )}
             </div>
           </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={toggleAiPause}
+              disabled={toggling}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+                isAiPaused
+                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
+                  : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300'
+              }`}
+            >
+              {toggling ? <Loader2 className="h-3 w-3 animate-spin" /> : isAiPaused ? <PlayCircle className="h-3 w-3" /> : <PauseCircle className="h-3 w-3" />}
+              {isAiPaused ? 'Resume' : 'Pause'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-all"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Urgent human handoff banner */}
+      {/* Urgent handoff banner */}
       {conversation.is_urgent && !isAiPaused && (
-        <div className="rounded-2xl border-2 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/20 p-4 animate-pulse">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900">
-                <MessageSquare className="h-5 w-5 text-red-600 dark:text-red-400" />
+        <div className="mx-4 mt-2 rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/20 p-3 shrink-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 dark:bg-red-900 shrink-0">
+                <MessageSquare className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
               </div>
               <div>
-                <p className="font-semibold text-red-800 dark:text-red-300">Customer requested human support</p>
-                <p className="text-sm text-red-600 dark:text-red-400">This customer asked to speak to a real person</p>
+                <p className="text-sm font-medium text-red-800 dark:text-red-300 leading-tight">Human support requested</p>
+                <p className="text-xs text-red-600 dark:text-red-400">Accept to take over this conversation</p>
               </div>
             </div>
             <button
               onClick={acceptHandoff}
               disabled={accepting}
-              className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-green-700 transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3.5 py-2 text-xs font-medium text-white hover:bg-green-700 transition-all disabled:opacity-50 shrink-0"
             >
-              {accepting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PlayCircle className="h-4 w-4" />
-              )}
+              {accepting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
               {accepting ? 'Accepting...' : 'Accept'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Messages</span>
-          <span className="ml-auto text-xs text-muted-foreground">{messages.length} messages</span>
-        </div>
-
-        <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
-                <MessageSquare className="h-8 w-8 text-gray-400" />
-              </div>
-              <p className="font-medium text-gray-900 dark:text-white">No messages yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Messages will appear here when the conversation continues.
-              </p>
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
+              <MessageSquare className="h-8 w-8 text-gray-400" />
             </div>
-          ) : (
-            messages.map((msg, i) => {
-              const isUser = msg.role === 'user';
-              const isAI = msg.sent_via_ai;
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex ${isUser ? 'justify-start' : 'justify-end'} animate-fade-in-up`}
-                  style={{ animationDelay: `${i * 30}ms` }}
-                >
-                  <div className={`flex gap-3 max-w-[75%] ${isUser ? 'flex-row' : 'flex-row-reverse'}`}>
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                      isUser
-                        ? 'bg-gray-100 dark:bg-gray-800'
-                        : isAI
-                        ? 'bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900 dark:to-blue-900'
-                        : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                    }`}>
-                      {isUser && conversation?.sender_picture ? (
-                        <img src={conversation.sender_picture} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : isUser ? (
-                        <User className="h-4 w-4 text-gray-500" />
-                      ) : isAI ? (
-                        <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                      ) : (
-                        <MessageSquare className="h-4 w-4 text-white" />
-                      )}
-                    </div>
-                    <div>
-                      <div className={`rounded-2xl px-4 py-2.5 text-sm ${
-                        isUser
-                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-tl-none'
-                          : isAI
-                          ? 'bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border border-purple-200 dark:border-purple-800 text-gray-900 dark:text-white rounded-tr-none'
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-tr-none'
-                      }`}>
-                        <p>{msg.content}</p>
+            <p className="font-medium text-gray-900 dark:text-white">No messages yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Messages will appear here when the conversation continues.
+            </p>
+          </div>
+        ) : (
+          messages.map((msg, i) => {
+            const isUser = msg.role === 'user';
+            const isAI = msg.sent_via_ai;
+            return (
+              <div
+                key={msg.id}
+                className={`flex ${isUser ? 'justify-start' : 'justify-end'} animate-fade-in-up items-end gap-2`}
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
+                {/* Customer avatar (left side) */}
+                {isUser && (
+                  <div className="shrink-0">
+                    {conversation.sender_picture ? (
+                      <img src={conversation.sender_picture} alt="" className="h-7 w-7 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                        <User className="h-3.5 w-3.5 text-gray-500" />
                       </div>
-                      <div className={`flex items-center gap-2 mt-1 ${isUser ? 'ml-1' : 'mr-1 justify-end'}`}>
-                        <span className="text-xs text-muted-foreground">{formatDate(msg.created_at)}</span>
-                        {isAI && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-900 px-2 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-300">
-                            <Bot className="h-3 w-3" />
-                            AI
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Message bubble */}
+                <div className={`max-w-[70%] ${isUser ? '' : 'items-end flex flex-col'}`}>
+                  <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-tl-none'
+                      : 'rounded-tr-none'
+                  } ${
+                    !isUser && isAI
+                      ? 'bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border border-purple-200 dark:border-purple-800 text-gray-900 dark:text-white'
+                      : ''
+                  } ${
+                    !isUser && !isAI
+                      ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                      : ''
+                  }`}>
+                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  </div>
+                  <div className={`flex items-center gap-1.5 mt-1 ${isUser ? 'ml-1 justify-start' : 'mr-1 justify-end'}`}>
+                    <span className="text-[10px] text-muted-foreground">{formatDate(msg.created_at)}</span>
+                    <span className="text-[10px] text-muted-foreground/60">{platformIcons[conversation.platform]}</span>
+                    {isAI && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-purple-100 dark:bg-purple-900 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300">
+                        <Bot className="h-2.5 w-2.5" />
+                        AI
+                      </span>
+                    )}
                   </div>
                 </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
 
-        <div className={`border-t ${isAiPaused ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-gray-100 dark:border-gray-800'} p-4`}>
-          <div className="flex gap-2">
-            <Input
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
-              placeholder={isAiPaused ? "AI is paused — reply manually" : "Type a message to send via AI..."}
-              disabled={sending}
-              className="flex-1"
-            />
-            <Button
-              onClick={handleSendReply}
-              disabled={sending || !replyText.trim()}
-              className={`gap-2 ${isAiPaused ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
-            >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              {isAiPaused ? 'Send (Manual)' : 'Send'}
-            </Button>
-          </div>
+                {/* Agent avatar (right side) */}
+                {!isUser && (
+                  <div className="shrink-0">
+                    {agentAvatar ? (
+                      <img src={agentAvatar} alt="" className="h-7 w-7 rounded-full object-cover" />
+                    ) : (
+                      <div className={`flex h-7 w-7 items-center justify-center rounded-full ${
+                        conversation.platform === 'instagram'
+                          ? 'bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-900 dark:to-rose-900'
+                          : conversation.platform === 'whatsapp'
+                          ? 'bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900 dark:to-emerald-900'
+                          : 'bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900 dark:to-indigo-900'
+                      }`}>
+                        {conversation.platform === 'instagram'
+                          ? <Instagram className="h-3.5 w-3.5 text-pink-600 dark:text-pink-400" />
+                          : conversation.platform === 'whatsapp'
+                          ? <MessageCircle className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                          : <Facebook className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                        }
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input bar */}
+      <div className={`border-t ${isAiPaused ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-gray-200 dark:border-gray-800'} px-4 py-3 shrink-0`}>
+        <div className="flex gap-2">
+          <Input
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
+            placeholder={isAiPaused ? "AI is paused — reply manually" : "Type a message to send via AI..."}
+            disabled={sending}
+            className="flex-1"
+          />
+          <Button
+            onClick={handleSendReply}
+            disabled={sending || !replyText.trim()}
+            className={`gap-2 text-sm ${isAiPaused ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {isAiPaused ? 'Send (Manual)' : 'Send'}
+          </Button>
         </div>
       </div>
 

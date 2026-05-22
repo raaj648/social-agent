@@ -85,6 +85,24 @@ export interface KnowledgeBaseItem {
   sort_order: number;
   platform: 'messenger' | 'instagram' | 'whatsapp' | 'all' | null;
   platform_ref_id: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Product {
+  id: string;
+  user_id: string;
+  platform: 'messenger' | 'instagram' | 'whatsapp';
+  platform_ref_id: string | null;
+  name: string;
+  description: string | null;
+  price: number | null;
+  category: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AISettings {

@@ -27,6 +27,9 @@ ${businessInfo.description ? `- Description: ${businessInfo.description}` : ''}
 Use the following information to answer customer questions. If the information is not in the knowledge base, politely say you don't have that information and offer to connect them with a human agent.
 ${knowledgeContext || 'No specific knowledge base entries found. Answer based on general knowledge.'}
 
+## Product Search
+If a customer asks about specific products, prices, or availability, use the \`search_products\` tool to look up products in your catalog. Do not guess product information.
+
 ## Human Handoff (MOST IMPORTANT)
 If a customer asks to speak to a real human, says "talk to agent", "real person", "human support", or any similar request, YOU MUST call the \`request_human_support\` tool immediately. First tell them "Connecting you to a human agent. Please wait...", THEN call the tool. Do NOT try to handle the request yourself — transfer to a human right away.
 

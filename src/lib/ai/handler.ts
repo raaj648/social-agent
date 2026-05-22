@@ -125,20 +125,25 @@ export async function handleAIResponse(
     }
     masterPrompt = platformCfg?.value as string || null;
 
-    // Fetch knowledge base
-    const { data: knowledgeBase } = await supabase
-      .from('knowledge_base')
-      .select('category, title, content, platform, platform_ref_id')
-      .eq('user_id', targetUserId)
-      .eq('is_active', true)
-      .order('sort_order');
+    // Fetch knowledge base using junction table
+    const channelRefId = pageDbId || instagramDbId || whatsappDbId;
+    const { data: kbLinks } = await supabase
+      .from('knowledge_base_platforms')
+      .select('kb_id')
+      .eq('platform', platform)
+      .or(`platform_ref_id.eq.${channelRefId},platform_ref_id.is.null`);
 
-    // Filter KB by platform match
-    const filteredKB = (knowledgeBase || []).filter((item: any) => {
-      if (!item.platform || item.platform === 'all') return true;
-      if (item.platform !== platform) return false;
-      return true;
-    });
+    const kbIds = kbLinks?.map(r => r.kb_id) || [];
+    const { data: knowledgeBase } = kbIds.length > 0
+      ? await supabase
+          .from('knowledge_base')
+          .select('category, title, content')
+          .eq('user_id', targetUserId)
+          .eq('is_active', true)
+          .in('id', kbIds)
+          .order('sort_order')
+      : { data: [] };
+    const filteredKB = knowledgeBase || [];
 
     // Fetch recent messages
     const { data: recentMessages } = await supabase
@@ -227,6 +232,22 @@ export async function handleAIResponse(
       });
     }
 
+    // Add search_products tool (always available)
+    baseTools.push({
+      type: 'function',
+      function: {
+        name: 'search_products',
+        description: 'Search for products by name or keyword in the product catalog. Call this when a customer asks about specific products, prices, or availability.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The product search query (name or keyword)' },
+          },
+          required: ['query'],
+        },
+      },
+    });
+
     const tools = baseTools.length > 0 ? baseTools : undefined;
 
     // Create completion
@@ -279,6 +300,57 @@ export async function handleAIResponse(
           content: confirmationMsg,
           sent_via_ai: true,
         });
+      }
+    } else if (toolCall && toolCall.function.name === 'search_products') {
+      const args = JSON.parse(toolCall.function.arguments);
+      const searchQuery = args.query || '';
+      const channelRefId = pageDbId || instagramDbId || whatsappDbId;
+
+      let searchReq = supabase
+        .from('products')
+        .select('name, description, price, category, image_url')
+        .eq('user_id', targetUserId)
+        .eq('is_active', true)
+        .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+
+      if (channelRefId) {
+        searchReq = searchReq.or(`platform_ref_id.eq.${channelRefId},platform_ref_id.is.null`);
+      }
+
+      const { data: products } = await searchReq.limit(10);
+
+      const productList = products && products.length > 0
+        ? products.map((p: any) =>
+            `- ${p.name}${p.price ? ' ($' + p.price + ')' : ''}${p.description ? ': ' + p.description : ''}`
+          ).join('\n')
+        : 'No products found for "' + searchQuery + '".';
+
+      const toolResult = '## Product Search Results for "' + searchQuery + '"\n' + productList;
+
+      const followUpMessages = [
+        ...completionMessages,
+        { role: 'assistant' as const, content: null, tool_calls: [toolCall] },
+        { role: 'tool' as const, tool_call_id: toolCall.id, content: toolResult },
+      ];
+
+      const followUp = await createCompletion({
+        model: activeModel,
+        messages: followUpMessages,
+        temperature: settings.temperature || 0.7,
+        max_tokens: settings.max_tokens || 500,
+      }, providerConfig);
+
+      const followUpContent = followUp.choices?.[0]?.message?.content;
+      if (followUpContent) {
+        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings);
+        if (sent) {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: followUpContent,
+            sent_via_ai: true,
+          });
+        }
       }
     } else {
       const aiReply = choice?.message?.content;
