@@ -50,8 +50,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No API key configured. Add a provider or set the OpenRouter key.' }, { status: 400 });
     }
 
-    const chatMessages = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...messages]
+    let effectiveSystemPrompt = systemPrompt;
+
+    // Inject master prompt if set
+    const { data: masterPromptData } = await supabase
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'master_prompt')
+      .maybeSingle();
+    const masterPrompt = masterPromptData?.value as string | null;
+    if (masterPrompt) {
+      effectiveSystemPrompt = effectiveSystemPrompt
+        ? `${masterPrompt}\n\n---\n\n${effectiveSystemPrompt}`
+        : masterPrompt;
+    }
+
+    const chatMessages = effectiveSystemPrompt
+      ? [{ role: 'system', content: effectiveSystemPrompt }, ...messages]
       : messages;
 
     const response = await createCompletion(

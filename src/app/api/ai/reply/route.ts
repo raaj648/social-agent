@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       .from('conversations')
       .select('*')
       .eq('id', conversationId)
+      .eq('user_id', user.id)
       .single();
 
     if (!conversation) {

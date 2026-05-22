@@ -255,6 +255,19 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     aiSettings = settings;
   }
 
+  // If we have a business_id on the channel but not on aiSettings, try to get business-scoped settings
+  if (channel.business_id && (!aiSettings?.business_id)) {
+    const { data: bizSettings } = await supabase
+      .from('ai_settings')
+      .select('*')
+      .eq('user_id', channel.user_id)
+      .eq('business_id', channel.business_id)
+      .maybeSingle();
+    if (bizSettings) {
+      aiSettings = bizSettings;
+    }
+  }
+
   if (!aiSettings) {
     aiSettings = {
       is_active: true,
@@ -274,7 +287,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       human_handoff_enabled: true, human_handoff_message: '{agent_name} has joined the chat',
       show_handoff_on_pause: false, auto_resume_minutes: null,
       business_name: null, agent_role: 'Sales Agent',
-      id: '', user_id: '', page_id: null, instagram_id: null, system_prompt: null,
+      id: '', user_id: '', business_id: null, page_id: null, instagram_id: null, system_prompt: null,
     } as AISettings;
   } else if (!aiSettings.is_active) {
     return;
@@ -566,15 +579,21 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       });
     } else if (toolCall && toolCall.function.name === 'search_products') {
       const args = JSON.parse(toolCall.function.arguments);
-      const searchQuery = args.query || '';
+      const searchQuery = (args.query || '').replace(/'/g, "''");
 
       let searchReq = supabase
         .from('products')
         .select('name, description, price, category, image_url')
         .eq('user_id', channel.user_id)
         .eq('is_active', true)
-        .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
-        .or(`platform_ref_id.eq.${channel.id},platform_ref_id.is.null`);
+        .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+
+      if (channel.business_id) {
+        searchReq = searchReq.eq('business_id', channel.business_id);
+      }
+      if (channel.id) {
+        searchReq = searchReq.or(`platform_ref_id.eq.${channel.id},platform_ref_id.is.null`);
+      }
 
       const { data: products } = await searchReq.limit(10);
 

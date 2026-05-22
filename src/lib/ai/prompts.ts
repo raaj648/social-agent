@@ -15,9 +15,7 @@ export function buildSystemPrompt(
     ? `\n\nAdditional Instructions:\n${aiSettings.system_prompt}`
     : '';
 
-  const masterPrefix = masterPrompt ? `${masterPrompt}\n\n---\n\n` : '';
-
-  return `${masterPrefix}You are ${agentName}, ${agentRole} at "${bizName}". Your role is to provide helpful, accurate, and friendly responses to customer inquiries.
+  return `You are ${agentName}, ${agentRole} at "${bizName}". Your role is to provide helpful, accurate, and friendly responses to customer inquiries.
 
 ## Business Context
 - Business Name: ${bizName}
@@ -43,7 +41,8 @@ If a customer asks to speak to a real human, says "talk to agent", "real person"
 7. Do not mention that you are an AI unless asked directly.
 8. Stay on brand - match the business tone.${customPrompt}
 
-${aiSettings.greeting_message ? `\nGreeting: ${aiSettings.greeting_message}` : ''}`;
+${aiSettings.greeting_message ? `\nGreeting: ${aiSettings.greeting_message}` : ''}
+${masterPrompt ? `\n\n## CRITICAL INSTRUCTION (OVERRIDES ALL ABOVE)\n${masterPrompt}` : ''}`;
 }
 
 export function buildConversationContext(

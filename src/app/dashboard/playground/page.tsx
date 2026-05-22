@@ -1,16 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { usePageTitle } from '@/lib/use-page-title';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Bot, Send, Loader2, RefreshCw } from 'lucide-react';
+import { Bot, Send, Loader2, RefreshCw, Facebook, Instagram, MessageCircle, Globe } from 'lucide-react';
 
 export default function PlaygroundPage() {
   usePageTitle('AI Playground');
   const [input, setInput] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
+  const [platform, setPlatform] = useState('');
+  const [platformRefId, setPlatformRefId] = useState('');
+  const [connectedPages, setConnectedPages] = useState<any[]>([]);
+  const [igAccounts, setIgAccounts] = useState<any[]>([]);
+  const [waAccounts, setWaAccounts] = useState<any[]>([]);
+  const supabase = createClient();
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  async function loadAccounts() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const [pagesRes, igRes, waRes] = await Promise.all([
+      supabase.from('connected_pages').select('id, page_name').eq('user_id', user.id),
+      supabase.from('instagram_accounts').select('id, ig_name, ig_username').eq('user_id', user.id),
+      supabase.from('whatsapp_accounts').select('id, business_name, phone_number').eq('user_id', user.id),
+    ]);
+    if (pagesRes.data) setConnectedPages(pagesRes.data);
+    if (igRes.data) setIgAccounts(igRes.data);
+    if (waRes.data) setWaAccounts(waRes.data);
+  }
+
+  function getAccountOptions() {
+    if (platform === 'messenger') return connectedPages;
+    if (platform === 'instagram') return igAccounts;
+    if (platform === 'whatsapp') return waAccounts;
+    return [];
+  }
+
+  function getAccountLabel(acc: any) {
+    if (platform === 'messenger') return acc.page_name;
+    if (platform === 'instagram') return acc.ig_name || acc.ig_username;
+    if (platform === 'whatsapp') return acc.business_name || acc.phone_number;
+    return '';
+  }
 
   async function handleTest() {
     if (!input.trim()) return;
@@ -21,7 +59,11 @@ export default function PlaygroundPage() {
       const res = await fetch('/api/ai/playground', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageText: input }),
+        body: JSON.stringify({
+          messageText: input,
+          platform: platform || undefined,
+          platformRefId: platformRefId || undefined,
+        }),
       });
       const data = await res.json();
       if (data.error) {
@@ -36,6 +78,8 @@ export default function PlaygroundPage() {
     }
   }
 
+  const accounts = getAccountOptions();
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -45,6 +89,47 @@ export default function PlaygroundPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
+          {/* Platform selector */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-medium">Test Platform Context (optional)</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-3">
+              {[
+                { value: '', label: 'All', icon: Globe },
+                { value: 'messenger', label: 'Messenger', icon: Facebook },
+                { value: 'instagram', label: 'Instagram', icon: Instagram },
+                { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+              ].map((p) => {
+                const Icon = p.icon;
+                return (
+                  <button
+                    key={p.value}
+                    onClick={() => { setPlatform(p.value); setPlatformRefId(''); }}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      platform === p.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {p.label}
+                  </button>
+                );
+              })}
+              {accounts.length > 0 && (
+                <select
+                  value={platformRefId}
+                  onChange={(e) => setPlatformRefId(e.target.value)}
+                  className="rounded-lg border border-input bg-background px-3 py-1.5 text-xs"
+                >
+                  <option value="">All {platform} accounts</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>{getAccountLabel(acc)}</option>
+                  ))}
+                </select>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -110,6 +195,7 @@ export default function PlaygroundPage() {
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex gap-2"><span className="text-blue-600 font-bold">•</span> The AI uses YOUR knowledge base, master prompt, and AI settings to generate responses.</li>
+            <li className="flex gap-2"><span className="text-blue-600 font-bold">•</span> Select a platform above to test with platform-specific knowledge base entries and products.</li>
             <li className="flex gap-2"><span className="text-blue-600 font-bold">•</span> Try asking about pricing, delivery, or products you have in your knowledge base.</li>
             <li className="flex gap-2"><span className="text-blue-600 font-bold">•</span> If you have order collection enabled, try placing an order to test the flow.</li>
             <li className="flex gap-2"><span className="text-blue-600 font-bold">•</span> Playground usage consumes your credits, just like real conversations.</li>

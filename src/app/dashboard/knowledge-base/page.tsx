@@ -10,7 +10,8 @@ import Papa from 'papaparse';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { usePageTitle } from '@/lib/use-page-title';
-import type { KnowledgeBaseItem, ConnectedPage, InstagramAccount, WhatsAppAccount, Product } from '@/types';
+import BusinessSelector from '@/components/business/BusinessSelector';
+import type { KnowledgeBaseItem, ConnectedPage, InstagramAccount, WhatsAppAccount, Product, Business } from '@/types';
 
 const CATEGORIES = ['general', 'faq', 'pricing', 'delivery', 'products', 'policy'] as const;
 const PLATFORMS = [
@@ -34,6 +35,7 @@ export default function KnowledgeBasePage() {
   const [igAccounts, setIgAccounts] = useState<InstagramAccount[]>([]);
   const [waAccounts, setWaAccounts] = useState<WhatsAppAccount[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [productForm, setProductForm] = useState<{ id?: string; name: string; description: string; price: string; category: string; image_url: string; platform: string; platform_ref_id: string; is_active: boolean }>({
     name: '', description: '', price: '', category: '', image_url: '', platform: 'messenger', platform_ref_id: '', is_active: true,
   });
@@ -62,18 +64,42 @@ export default function KnowledgeBasePage() {
     saving: false,
   });
   const supabase = createClient();
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
 
-  useEffect(() => { loadItems(); loadConnectedPlatforms(); loadAgentSettings(); loadProducts(); }, []);
+  useEffect(() => {
+    loadBusinesses();
+  }, []);
+
+  useEffect(() => {
+    if (!activeBusinessId) return;
+    loadItems();
+    loadConnectedPlatforms();
+    loadAgentSettings();
+    loadProducts();
+  }, [activeBusinessId]);
+
+  async function loadBusinesses() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id).order('created_at');
+    const bizList = data || [];
+    setBusinesses(bizList);
+    if (bizList.length > 0) {
+      setActiveBusinessId(bizList[0].id);
+    } else {
+      setLoading(false);
+    }
+  }
 
   async function loadAgentSettings() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     const { data } = await supabase
       .from('ai_settings')
-      .select('agent_display_name, ai_agent_name, human_handoff_enabled, human_handoff_message, show_handoff_on_pause, auto_resume_minutes, business_name, agent_role')
+      .select('*')
       .eq('user_id', user.id)
-      .is('page_id', null)
-      .is('instagram_id', null)
+      .eq('business_id', activeBusinessId)
       .maybeSingle();
     if (data) {
       setAgentSettings(prev => ({ ...prev, ...data }));
@@ -82,39 +108,33 @@ export default function KnowledgeBasePage() {
 
   async function handleSaveAgentSettings() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     setAgentSettings(prev => ({ ...prev, saving: true }));
     const { data: existing } = await supabase
       .from('ai_settings')
       .select('id')
       .eq('user_id', user.id)
-      .is('page_id', null)
-      .is('instagram_id', null)
+      .eq('business_id', activeBusinessId)
       .maybeSingle();
 
+    const payload = {
+      agent_display_name: agentSettings.agent_display_name,
+      ai_agent_name: agentSettings.ai_agent_name,
+      human_handoff_enabled: agentSettings.human_handoff_enabled,
+      human_handoff_message: agentSettings.human_handoff_message,
+      show_handoff_on_pause: agentSettings.show_handoff_on_pause,
+      auto_resume_minutes: agentSettings.auto_resume_minutes,
+      business_name: agentSettings.business_name,
+      agent_role: agentSettings.agent_role,
+    };
+
     if (existing) {
-      await supabase.from('ai_settings').update({
-        agent_display_name: agentSettings.agent_display_name,
-        ai_agent_name: agentSettings.ai_agent_name,
-        human_handoff_enabled: agentSettings.human_handoff_enabled,
-        human_handoff_message: agentSettings.human_handoff_message,
-        show_handoff_on_pause: agentSettings.show_handoff_on_pause,
-        auto_resume_minutes: agentSettings.auto_resume_minutes,
-        business_name: agentSettings.business_name,
-        agent_role: agentSettings.agent_role,
-      }).eq('id', existing.id);
+      await supabase.from('ai_settings').update(payload).eq('id', existing.id);
     } else {
-      // Fix: Insert new settings if user doesn't have an ai_settings row yet
       await supabase.from('ai_settings').insert({
+        ...payload,
         user_id: user.id,
-        agent_display_name: agentSettings.agent_display_name,
-        ai_agent_name: agentSettings.ai_agent_name,
-        human_handoff_enabled: agentSettings.human_handoff_enabled,
-        human_handoff_message: agentSettings.human_handoff_message,
-        show_handoff_on_pause: agentSettings.show_handoff_on_pause,
-        auto_resume_minutes: agentSettings.auto_resume_minutes,
-        business_name: agentSettings.business_name,
-        agent_role: agentSettings.agent_role,
+        business_id: activeBusinessId,
       });
     }
     setAgentSettings(prev => ({ ...prev, saving: false }));
@@ -123,12 +143,11 @@ export default function KnowledgeBasePage() {
 
   async function loadConnectedPlatforms() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     const [pagesRes, igRes, waRes] = await Promise.all([
-      // Fix: Changed select to '*' so the result matches your strict TypeScript state
-      supabase.from('connected_pages').select('*').eq('user_id', user.id),
-      supabase.from('instagram_accounts').select('*').eq('user_id', user.id),
-      supabase.from('whatsapp_accounts').select('*').eq('user_id', user.id),
+      supabase.from('connected_pages').select('*').eq('user_id', user.id).eq('business_id', activeBusinessId),
+      supabase.from('instagram_accounts').select('*').eq('user_id', user.id).eq('business_id', activeBusinessId),
+      supabase.from('whatsapp_accounts').select('*').eq('user_id', user.id).eq('business_id', activeBusinessId),
     ]);
     setConnectedPages(pagesRes.data || []);
     setIgAccounts(igRes.data || []);
@@ -137,8 +156,8 @@ export default function KnowledgeBasePage() {
 
   async function loadItems() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.from('knowledge_base').select('*').eq('user_id', user.id).order('sort_order');
+    if (!user || !activeBusinessId) return;
+    const { data } = await supabase.from('knowledge_base').select('*').eq('user_id', user.id).eq('business_id', activeBusinessId).order('sort_order');
     setItems(data || []);
     if (data && data.length > 0) {
       const ids = data.map(i => i.id);
@@ -157,10 +176,12 @@ export default function KnowledgeBasePage() {
   }
 
   async function loadProducts() {
+    setLoadingProducts(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.from('products').select('*').eq('user_id', user.id).order('sort_order');
+    if (!user || !activeBusinessId) { setLoadingProducts(false); return; }
+    const { data } = await supabase.from('products').select('*').eq('user_id', user.id).eq('business_id', activeBusinessId).order('sort_order');
     setProducts(data || []);
+    setLoadingProducts(false);
   }
 
   async function handleSave(item: KnowledgeBaseItem) {
@@ -198,9 +219,10 @@ export default function KnowledgeBasePage() {
 
   async function handleAdd() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     const { data } = await supabase.from('knowledge_base').insert({
       user_id: user.id,
+      business_id: activeBusinessId,
       category: 'general',
       title: 'New Entry',
       content: 'Add your content here...',
@@ -267,7 +289,15 @@ export default function KnowledgeBasePage() {
       toast.error('Failed to delete entry');
       return;
     }
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    const remaining = items.filter((i) => i.id !== id);
+    // Rebalance sort_order
+    const updates = remaining.map((item, idx) =>
+      supabase.from('knowledge_base').update({ sort_order: idx }).eq('id', item.id)
+    );
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+    setItems(remaining.map((item, idx) => ({ ...item, sort_order: idx })));
     toast.success('Entry deleted');
   }
 
@@ -290,7 +320,7 @@ export default function KnowledgeBasePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     const text = await file.text();
     const parsed = Papa.parse<{ category: string; title: string; content: string }>(text, {
       header: true,
@@ -298,6 +328,7 @@ export default function KnowledgeBasePage() {
     });
     const entries = parsed.data.map((row, i) => ({
       user_id: user.id,
+      business_id: activeBusinessId,
       category: (row.category || 'general').trim(),
       title: (row.title || 'Imported Entry').trim(),
       content: (row.content || '').trim(),
@@ -318,9 +349,10 @@ export default function KnowledgeBasePage() {
 
   async function handleSaveProduct() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !productForm.name) return;
-    const payload = {
+    if (!user || !activeBusinessId || !productForm.name) return;
+    const payload: Record<string, any> = {
       user_id: user.id,
+      business_id: activeBusinessId,
       name: productForm.name,
       description: productForm.description || null,
       price: productForm.price ? parseFloat(productForm.price) : null,
@@ -350,11 +382,29 @@ export default function KnowledgeBasePage() {
     toast.success('Product deleted');
   }
 
+  function handleExportProducts() {
+    const csv = Papa.unparse(products.map(p => ({
+      name: p.name,
+      description: p.description || '',
+      price: p.price?.toString() || '',
+      category: p.category || '',
+      image_url: p.image_url || '',
+      platform: p.platform,
+    })), { quotes: true });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'products.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleImportProducts(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeBusinessId) return;
     setImportingProducts(true);
     const text = await file.text();
     const parsed = Papa.parse<{ name: string; description: string; price: string; category: string; image_url: string; platform: string }>(text, {
@@ -365,6 +415,7 @@ export default function KnowledgeBasePage() {
       .filter(row => row.name?.trim())
       .map(row => ({
         user_id: user.id,
+        business_id: activeBusinessId,
         name: row.name.trim(),
         description: row.description?.trim() || null,
         price: row.price ? parseFloat(row.price) : null,
@@ -408,6 +459,16 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="space-y-6">
+      {/* Business Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10 p-3">
+        <BusinessSelector activeBusinessId={activeBusinessId} onSelect={setActiveBusinessId} />
+        {activeBusinessId && businesses.find(b => b.id === activeBusinessId) && (
+          <span className="text-xs text-muted-foreground">
+            Managing: <span className="font-medium text-foreground">{businesses.find(b => b.id === activeBusinessId)?.name}</span>
+          </span>
+        )}
+      </div>
+
       {/* Tab toggle */}
       <div className="flex gap-1 rounded-xl bg-muted p-1 w-fit">
         <button
@@ -713,6 +774,9 @@ export default function KnowledgeBasePage() {
               <p className="text-muted-foreground">Manage your product catalog — AI searches this when customers ask</p>
             </div>
             <div className="flex gap-2">
+              <Button variant="outline" onClick={handleExportProducts} disabled={products.length === 0} className="gap-2">
+                <Download className="h-4 w-4" /> Export CSV
+              </Button>
               <label className="cursor-pointer">
                 <Button variant="outline" className="gap-2 pointer-events-none" disabled={importingProducts}>
                   {importingProducts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import CSV
@@ -795,7 +859,11 @@ export default function KnowledgeBasePage() {
           )}
 
           {/* Products list */}
-          {products.length === 0 && !showProductForm ? (
+          {loadingProducts ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : products.length === 0 && !showProductForm ? (
             <Card>
               <CardContent className="flex flex-col items-center gap-4 py-16">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">

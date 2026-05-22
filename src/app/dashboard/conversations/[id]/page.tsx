@@ -55,7 +55,9 @@ export default function ConversationDetailPage({
   const [avatarError, setAvatarError] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -80,9 +82,57 @@ export default function ConversationDetailPage({
   const pageTitle = conversation ? getDisplayName(conversation) : 'Conversation';
   usePageTitle(pageTitle);
 
-  useEffect(() => { loadData(); }, []);
+  function handleScroll() {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const threshold = 150;
+    const bottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    setIsNearBottom(bottom < threshold);
+  }
 
-async function loadData() {
+  function scrollToBottom(smooth = true) {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    loadData();
+
+    const channel = supabase
+      .channel(`messages-${params.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${params.id}`,
+      }, (payload) => {
+        const newMsg = payload.new as Message;
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+        if (newMsg.role === 'user') {
+          supabase.from('conversations').update({ unread_count: 0 }).eq('id', params.id).then();
+          setConversation(prev => prev ? { ...prev, unread_count: 0 } : null);
+        }
+        if (isNearBottom) {
+          setTimeout(() => scrollToBottom(), 50);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isNearBottom) {
+      scrollToBottom();
+    }
+  }, [messages, isNearBottom]);
+
+  async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
     const { data: conv } = await supabase
@@ -129,10 +179,6 @@ async function loadData() {
     setMessages(msgs || []);
     setLoading(false);
   }
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   async function toggleAiPause() {
     if (!conversation) return;
@@ -363,7 +409,15 @@ async function loadData() {
       )}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative">
+        {!isNearBottom && messages.length > 0 && (
+          <button
+            onClick={() => scrollToBottom()}
+            className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 rounded-full bg-blue-600 text-white px-4 py-1.5 text-xs font-medium shadow-lg hover:bg-blue-700 transition-all"
+          >
+            ↓ Scroll to latest
+          </button>
+        )}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
@@ -452,6 +506,23 @@ async function loadData() {
               </div>
             );
           })
+        )}
+        {sending && !isAiPaused && (
+          <div className="flex justify-end items-end gap-2 animate-fade-in-up">
+            <div className="flex flex-col items-end">
+              <div className="rounded-2xl rounded-tr-none px-4 py-3 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border border-purple-200 dark:border-purple-800">
+                <div className="flex gap-1">
+                  <span className="h-2 w-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+              <span className="text-[10px] text-muted-foreground mt-1 mr-1">AI is thinking...</span>
+            </div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900 dark:to-indigo-900 shrink-0">
+              <Bot className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+            </div>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>

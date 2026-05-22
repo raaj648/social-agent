@@ -108,6 +108,7 @@ export interface Product {
 export interface AISettings {
   id: string;
   user_id: string;
+  business_id: string | null;
   page_id: string | null;
   instagram_id: string | null;
   model: string;
@@ -248,6 +249,15 @@ export interface BillingPlan {
   is_popular: boolean;
   sort_order: number;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Business {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
   created_at: string;
   updated_at: string;
 }

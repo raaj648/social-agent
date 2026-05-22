@@ -125,6 +125,34 @@ export async function handleAIResponse(
     }
     masterPrompt = platformCfg?.value as string || null;
 
+    // Look up business_id from platform account for multi-business scoping
+    let businessId: string | null = null;
+    if (settings?.business_id) {
+      businessId = settings.business_id;
+    } else if (pageDbId) {
+      const { data: page } = await supabase.from('connected_pages').select('business_id').eq('id', pageDbId).single();
+      businessId = page?.business_id || null;
+    } else if (instagramDbId) {
+      const { data: ig } = await supabase.from('instagram_accounts').select('business_id').eq('id', instagramDbId).single();
+      businessId = ig?.business_id || null;
+    } else if (whatsappDbId) {
+      const { data: wa } = await supabase.from('whatsapp_accounts').select('business_id').eq('id', whatsappDbId).single();
+      businessId = wa?.business_id || null;
+    }
+
+    // If we found a business_id, refetch ai_settings scoped to it
+    if (businessId && (!settings?.business_id)) {
+      const { data: bizSettings } = await supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .eq('business_id', businessId)
+        .maybeSingle();
+      if (bizSettings) {
+        settings = { ...settings, ...bizSettings } as AISettings;
+      }
+    }
+
     // Fetch knowledge base using junction table
     const channelRefId = pageDbId || instagramDbId || whatsappDbId;
     const { data: kbLinks } = await supabase
@@ -303,7 +331,7 @@ export async function handleAIResponse(
       }
     } else if (toolCall && toolCall.function.name === 'search_products') {
       const args = JSON.parse(toolCall.function.arguments);
-      const searchQuery = args.query || '';
+      const searchQuery = (args.query || '').replace(/'/g, "''");
       const channelRefId = pageDbId || instagramDbId || whatsappDbId;
 
       let searchReq = supabase
@@ -313,8 +341,11 @@ export async function handleAIResponse(
         .eq('is_active', true)
         .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
 
+      if (businessId) {
+        searchReq = searchReq.eq('business_id', businessId);
+      }
       if (channelRefId) {
-        searchReq = searchReq.or(`platform_ref_id.eq.${channelRefId},platform_ref_id.is.null`);
+        searchReq = searchReq.eq('platform_ref_id', channelRefId);
       }
 
       const { data: products } = await searchReq.limit(10);
