@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  MessageSquare, Facebook, Instagram, MessageCircle, Inbox, Archive, Search, RefreshCw, Loader2
+  MessageSquare, Facebook, Instagram, MessageCircle, Inbox, Archive, Search, RefreshCw, Loader2, Trash2
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { usePageTitle } from '@/lib/use-page-title';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { Conversation } from '@/types';
 
 export default function ConversationsPage() {
@@ -21,6 +22,7 @@ export default function ConversationsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
   const [erroredAvatars, setErroredAvatars] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const supabase = createClient();
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
@@ -94,6 +96,12 @@ export default function ConversationsPage() {
   async function handleArchive(convId: string, archived: boolean) {
     await supabase.from('conversations').update({ is_archived: archived }).eq('id', convId);
     setConversations(prev => archived ? prev.filter(c => c.id !== convId) : prev);
+  }
+
+  async function handleDelete(convId: string) {
+    setConfirmDelete(null);
+    await supabase.from('conversations').delete().eq('id', convId);
+    setConversations(prev => prev.filter(c => c.id !== convId));
   }
 
   const filtered = useMemo(() => {
@@ -228,20 +236,42 @@ export default function ConversationsPage() {
                   </CardHeader>
                 </Card>
               </Link>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleArchive(conv.id, !conv.is_archived);
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
-                title={conv.is_archived ? 'Unarchive' : 'Archive'}
-              >
-                <Archive className="h-4 w-4" />
-              </button>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleArchive(conv.id, !conv.is_archived);
+                  }}
+                  className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+                  title={conv.is_archived ? 'Unarchive' : 'Archive'}
+                >
+                  <Archive className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setConfirmDelete(conv.id);
+                  }}
+                  className="rounded-lg p-1.5 hover:bg-red-100 text-muted-foreground hover:text-red-600"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation and all its messages? This cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+      />
     </div>
   );
 }

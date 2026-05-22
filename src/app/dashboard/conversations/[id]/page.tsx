@@ -8,9 +8,10 @@ import { formatDate } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  MessageSquare, Bot, User, ArrowLeft, Clock, PauseCircle, PlayCircle, Loader2, Send
+  MessageSquare, Bot, User, ArrowLeft, Clock, PauseCircle, PlayCircle, Loader2, Send, Trash2
 } from 'lucide-react';
 import { usePageTitle } from '@/lib/use-page-title';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { Conversation, Message } from '@/types';
 
 export default function ConversationDetailPage({
@@ -26,6 +27,8 @@ export default function ConversationDetailPage({
   const [sending, setSending] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const router = useRouter();
@@ -117,6 +120,14 @@ async function loadData() {
     } finally {
       setAccepting(false);
     }
+  }
+
+  async function handleDelete() {
+    if (!conversation || deleting) return;
+    setDeleting(true);
+    setConfirmDelete(false);
+    await supabase.from('conversations').delete().eq('id', conversation.id).eq('user_id', conversation.user_id);
+    router.push('/dashboard/conversations');
   }
 
   async function handleSendReply() {
@@ -242,18 +253,28 @@ async function loadData() {
              </div>
 
               {/* AI Pause Toggle */}
-              <button
-                onClick={toggleAiPause}
-                disabled={toggling}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                  isAiPaused
-                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300'
-                }`}
-              >
-                {toggling ? <Loader2 className="h-4 w-4 animate-spin" /> : isAiPaused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
-                {isAiPaused ? 'Resume AI' : 'Pause AI'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleAiPause}
+                  disabled={toggling}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                    isAiPaused
+                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-300'
+                      : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300'
+                  }`}
+                >
+                  {toggling ? <Loader2 className="h-4 w-4 animate-spin" /> : isAiPaused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
+                  {isAiPaused ? 'Resume AI' : 'Pause AI'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={deleting}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-all"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
             </div>
 
             {/* 24-hour window indicator */}
@@ -401,6 +422,17 @@ async function loadData() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation and all its messages? This cannot be undone."
+        confirmLabel="Delete"
+        loading={deleting}
+        variant="destructive"
+      />
     </div>
   );
 }
