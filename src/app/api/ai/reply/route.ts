@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { handleAIResponse } from '@/lib/ai/handler';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { decrypt } from '@/lib/crypto';
+import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,16 +37,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const { data: aiSettings } = await supabase
-      .from('ai_settings')
-      .select('*')
-      .eq('user_id', conversation.user_id)
-      .single();
-
-    if (!aiSettings) {
-      return NextResponse.json({ error: 'AI settings not configured' }, { status: 400 });
-    }
-
     let accessToken = '';
     if (platform === 'messenger' && conversation.page_id) {
       const { data: page } = await supabase
@@ -70,12 +61,50 @@ export async function POST(request: NextRequest) {
       if (wa) accessToken = decrypt(wa.access_token);
     }
 
+    // Save user message to database
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       role: 'user',
       content: messageText,
       sent_via_ai: false,
     });
+
+    // If conversation is paused, send message directly to platform without AI
+    if (conversation.is_ai_paused) {
+      let sent = false;
+      if (platform === 'messenger') {
+        sent = await sendMessage(conversation.sender_id, messageText, accessToken, 'messenger');
+      } else if (platform === 'instagram' && conversation.instagram_id) {
+        const { data: igAccount } = await supabase
+          .from('instagram_accounts')
+          .select('ig_account_id')
+          .eq('id', conversation.instagram_id)
+          .single();
+        if (igAccount) {
+          sent = await sendInstagramMessage(igAccount.ig_account_id, conversation.sender_id, messageText, accessToken);
+        }
+      } else if (platform === 'whatsapp' && conversation.whatsapp_id) {
+        const { data: waAccount } = await supabase
+          .from('whatsapp_accounts')
+          .select('phone_number_id')
+          .eq('id', conversation.whatsapp_id)
+          .single();
+        if (waAccount) {
+          sent = await sendWhatsAppMessage(waAccount.phone_number_id, conversation.sender_id, messageText, accessToken);
+        }
+      }
+      return NextResponse.json({ success: true, manual: true, sent }, { status: 200 });
+    }
+
+    const { data: aiSettings } = await supabase
+      .from('ai_settings')
+      .select('*')
+      .eq('user_id', conversation.user_id)
+      .single();
+
+    if (!aiSettings) {
+      return NextResponse.json({ error: 'AI settings not configured' }, { status: 400 });
+    }
 
     await handleAIResponse(
       conversation.user_id,

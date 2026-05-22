@@ -20,6 +20,7 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
+  const [erroredAvatars, setErroredAvatars] = useState<Set<string>>(new Set());
   const supabase = createClient();
   const showArchivedRef = useRef(showArchived);
   showArchivedRef.current = showArchived;
@@ -171,12 +172,12 @@ export default function ConversationsPage() {
               <Link href={`/dashboard/conversations/${conv.id}`}>
                 <Card className={`transition-all hover:border-blue-200 hover:shadow-md hover:-translate-y-0.5 ${conv.is_urgent ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/10' : ''}`}>
                   <CardHeader className="flex flex-row items-center gap-4 py-4">
-                    {conv.sender_picture ? (
+                    {conv.sender_picture && !erroredAvatars.has(conv.id) ? (
                       <img
                         src={conv.sender_picture}
                         alt={conv.sender_name || conv.sender_id}
                         className="h-10 w-10 shrink-0 rounded-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onError={() => setErroredAvatars(prev => new Set(prev).add(conv.id))}
                       />
                     ) : (
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${

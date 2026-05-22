@@ -25,6 +25,7 @@ export default function ConversationDetailPage({
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const router = useRouter();
@@ -196,11 +197,12 @@ async function loadData() {
 
       <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-indigo-950 border border-blue-100 dark:border-blue-900 p-6">
         <div className="flex items-start gap-4">
-          {conversation.sender_picture ? (
+          {conversation.sender_picture && !avatarError ? (
             <img
               src={conversation.sender_picture}
               alt={conversation.sender_name || conversation.sender_id}
               className="h-14 w-14 shrink-0 rounded-xl object-cover shadow-md"
+              onError={() => setAvatarError(true)}
             />
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md">

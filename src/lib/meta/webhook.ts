@@ -130,6 +130,30 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   if (!conversation) return;
   const conversationId = conversation.id;
 
+  // Deduplication: skip if this platformMsgId has already been processed
+  if (platformMsgId) {
+    const { data: existingMsg } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .eq('platform_msg_id', platformMsgId)
+      .maybeSingle();
+    if (existingMsg) {
+      console.log(`[webhook] Duplicate message ${platformMsgId} for conversation ${conversationId}, skipping`);
+      return;
+    }
+  }
+
+  // Always save incoming messages so users can see them even when AI is paused
+  await supabase.from('messages').insert({
+    conversation_id: conversationId,
+    role: 'user',
+    content: messageText || '[attachment]',
+    platform_msg_id: platformMsgId,
+    sent_via_ai: false,
+  });
+
+  // If AI is paused, stop here (message already saved above)
   if (conversation.is_ai_paused) return;
 
   // Fetch customer profile if conversation has no real name yet
@@ -164,28 +188,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       // Non-critical: profile fetch failure should not block message processing
     }
   }
-
-  // Deduplication: skip if this platformMsgId has already been processed
-  if (platformMsgId) {
-    const { data: existingMsg } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('conversation_id', conversationId)
-      .eq('platform_msg_id', platformMsgId)
-      .maybeSingle();
-    if (existingMsg) {
-      console.log(`[webhook] Duplicate message ${platformMsgId} for conversation ${conversationId}, skipping`);
-      return;
-    }
-  }
-
-  await supabase.from('messages').insert({
-    conversation_id: conversationId,
-    role: 'user',
-    content: messageText || '[attachment]',
-    platform_msg_id: platformMsgId,
-    sent_via_ai: false,
-  });
 
   let aiSettings: AISettings | null = null;
   let accessToken = '';

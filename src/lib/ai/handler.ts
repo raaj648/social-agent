@@ -22,22 +22,6 @@ export async function handleAIResponse(
   try {
     const supabase = await createAdminClient();
 
-    // Check if AI is paused for this conversation
-    const { data: conversation } = await supabase
-      .from('conversations')
-      .select('is_ai_paused')
-      .eq('id', conversationId)
-      .single();
-    if (conversation?.is_ai_paused) return;
-
-    // Insert user message
-    await supabase.from('messages').insert({
-      conversation_id: conversationId,
-      role: 'user',
-      content: incomingMessage,
-      sent_via_ai: false,
-    });
-
     // Fetch AI settings if not provided
     let settings = aiSettings;
     if (!aiSettings) {
