@@ -186,24 +186,48 @@ export async function handleAIResponse(
       { role: 'user' as const, content: incomingMessage },
     ];
 
-    // Prepare tools for order extraction
-    const tools = userData?.order_method === 'direct_chat' ? [{
-      type: 'function' as const,
-      function: {
-        name: 'extract_order_details',
-        description: 'Extract complete order details from the customer conversation',
-        parameters: {
-          type: 'object',
-          properties: {
-            customer_name: { type: 'string', description: 'Customer full name' },
-            phone: { type: 'string', description: 'Customer phone number' },
-            delivery_address: { type: 'string', description: 'Customer delivery address' },
-            product_details: { type: 'string', description: 'Products ordered with quantities and details' },
+    // Prepare tools
+    const baseTools: Array<{
+      type: 'function';
+      function: { name: string; description: string; parameters: Record<string, unknown> };
+    }> = [];
+
+    if (settings.human_handoff_enabled) {
+      baseTools.push({
+        type: 'function',
+        function: {
+          name: 'request_human_support',
+          description: 'Call this when the customer explicitly asks to speak to a real human agent. This transfers the conversation to a live support agent.',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
           },
-          required: ['customer_name', 'product_details'],
         },
-      },
-    }] : undefined;
+      });
+    }
+
+    if (userData?.order_method === 'direct_chat') {
+      baseTools.push({
+        type: 'function',
+        function: {
+          name: 'extract_order_details',
+          description: 'Extract complete order details from the customer conversation',
+          parameters: {
+            type: 'object',
+            properties: {
+              customer_name: { type: 'string', description: 'Customer full name' },
+              phone: { type: 'string', description: 'Customer phone number' },
+              delivery_address: { type: 'string', description: 'Customer delivery address' },
+              product_details: { type: 'string', description: 'Products ordered with quantities and details' },
+            },
+            required: ['customer_name', 'product_details'],
+          },
+        },
+      });
+    }
+
+    const tools = baseTools.length > 0 ? baseTools : undefined;
 
     // Create completion
     const response = await createCompletion({
@@ -217,7 +241,23 @@ export async function handleAIResponse(
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
 
-    if (toolCall && toolCall.function.name === 'extract_order_details') {
+    if (toolCall && toolCall.function.name === 'request_human_support') {
+      const handoffMsg = "Connecting you to a human agent. Please wait...";
+      const sent = await sendPlatformMessage(senderId, handoffMsg, accessToken, platform, instagramDbId, whatsappDbId, settings);
+      if (sent) {
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: handoffMsg,
+          sent_via_ai: true,
+        });
+      }
+      await supabase.from('conversations').update({
+        is_urgent: true,
+        requested_human_at: new Date().toISOString(),
+        is_ai_paused: true,
+      }).eq('id', conversationId);
+    } else if (toolCall && toolCall.function.name === 'extract_order_details') {
       const args = JSON.parse(toolCall.function.arguments);
       await supabase.from('orders').insert({
         user_id: targetUserId,

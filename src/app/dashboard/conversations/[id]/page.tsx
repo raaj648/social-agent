@@ -46,11 +46,18 @@ export default function ConversationDetailPage({
   const supabase = createClient();
   const router = useRouter();
 
-  const pageTitle = conversation
-    ? (conversation.sender_name && conversation.sender_name !== conversation.sender_id
-      ? conversation.sender_name
-      : 'Customer')
-    : 'Conversation';
+  function isMachineId(name: string): boolean {
+    return /^\d+$/.test(name) || /^[a-f0-9-]{32,36}$/i.test(name);
+  }
+
+  function getDisplayName(conv: Conversation | null): string {
+    if (!conv?.sender_name) return 'Customer';
+    if (conv.sender_name === conv.sender_id) return 'Customer';
+    if (isMachineId(conv.sender_name)) return 'Customer';
+    return conv.sender_name;
+  }
+
+  const pageTitle = conversation ? getDisplayName(conversation) : 'Conversation';
   usePageTitle(pageTitle);
 
   useEffect(() => { loadData(); }, []);
@@ -82,6 +89,7 @@ async function loadData() {
         .from('conversations')
         .update({ unread_count: 0 })
         .eq('id', params.id);
+      setConversation(prev => prev ? { ...prev, unread_count: 0 } : null);
     }
 
     const { data: msgs } = await supabase
@@ -152,7 +160,7 @@ async function loadData() {
     const tempMsg: Message = {
       id: crypto.randomUUID(),
       conversation_id: conversation.id,
-      role: 'user',
+      role: 'assistant',
       content: text,
       platform_msg_id: null,
       is_read: true,
@@ -208,9 +216,7 @@ async function loadData() {
   if (!conversation) return null;
 
   const isAiPaused = conversation.is_ai_paused;
-  const displayName = conversation.sender_name && conversation.sender_name !== conversation.sender_id
-    ? conversation.sender_name
-    : 'Customer';
+  const displayName = getDisplayName(conversation);
 
   return (
     <div className="space-y-6">

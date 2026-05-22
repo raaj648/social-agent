@@ -61,10 +61,10 @@ export async function POST(request: NextRequest) {
       if (wa) accessToken = decrypt(wa.access_token);
     }
 
-    // Save user message to database
+    // Save agent reply to database
     await supabase.from('messages').insert({
       conversation_id: conversationId,
-      role: 'user',
+      role: 'assistant',
       content: messageText,
       sent_via_ai: false,
     });
