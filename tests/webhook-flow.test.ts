@@ -3,7 +3,7 @@ import { processWebhookMessage } from '@/lib/meta/webhook';
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/crypto', () => ({ decrypt: jest.fn() }));
 jest.mock('@/lib/meta/graph', () => ({
-  sendMessage: jest.fn(), sendInstagramMessage: jest.fn(), sendWhatsAppMessage: jest.fn(),
+  sendMessage: jest.fn(), sendWhatsAppMessage: jest.fn(),
 }));
 jest.mock('@/lib/ai/openrouter', () => ({ createCompletion: jest.fn() }));
 // checkCredits mock is no longer used — deduct_credit RPC handles atomic deduction
@@ -15,7 +15,7 @@ jest.mock('@/lib/ai/prompts', () => ({
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 import { createCompletion } from '@/lib/ai/openrouter';
 
 import { isWithinBusinessHours } from '@/lib/utils';
@@ -114,7 +114,6 @@ describe('processWebhookMessage', () => {
     (decrypt as jest.Mock).mockReturnValue('decrypted-token');
     (createCompletion as jest.Mock).mockResolvedValue(completionOk);
     (sendMessage as jest.Mock).mockResolvedValue(true);
-    (sendInstagramMessage as jest.Mock).mockResolvedValue(true);
     (sendWhatsAppMessage as jest.Mock).mockResolvedValue(true);
     (isWithinBusinessHours as jest.Mock).mockReturnValue(true);
   });
@@ -357,7 +356,7 @@ describe('processWebhookMessage', () => {
       });
 
       expect(decrypt).toHaveBeenCalledWith('encrypted-ig-token');
-      expect(sendInstagramMessage).toHaveBeenCalledWith('987654321', 'ig-sender-1', 'AI reply text', 'decrypted-token');
+      expect(sendMessage).toHaveBeenCalledWith('ig-sender-1', 'AI reply text', 'decrypted-token', 'instagram');
     });
   });
 

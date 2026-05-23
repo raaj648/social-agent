@@ -1,6 +1,6 @@
 ﻿import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendInstagramMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile } from '@/lib/meta/graph';
 import { createCompletion } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
@@ -695,7 +695,7 @@ async function sendPlatformReply(
     return sendMessage(recipientId, text, accessToken, 'messenger');
   }
   if (platform === 'instagram') {
-    return sendInstagramMessage(channel.ig_account_id || channel.id, recipientId, text, accessToken);
+    return sendMessage(recipientId, text, accessToken, 'instagram');
   }
   if (platform === 'whatsapp') {
     return sendWhatsAppMessage(channel.phone_number_id, recipientId, text, accessToken);

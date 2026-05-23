@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 import { sendTelegramMessage } from '@/lib/telegram/bot';
 import { sendDiscordMessage } from '@/lib/discord/bot';
 import { createCompletion, createFallbackResponse } from '@/lib/ai/openrouter';
@@ -468,7 +468,7 @@ async function sendPlatformMessage(
       .single();
 
     if (!igAccount) return false;
-    return sendInstagramMessage(igAccount.ig_account_id, recipientId, text, accessToken);
+    return sendMessage(recipientId, text, accessToken, 'instagram');
   }
 
   if (platform === 'whatsapp') {

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { handleAIResponse } from '@/lib/ai/handler';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,15 +75,8 @@ export async function POST(request: NextRequest) {
       let sent = false;
       if (platform === 'messenger') {
         sent = await sendMessage(conversation.sender_id, messageText, accessToken, 'messenger');
-      } else if (platform === 'instagram' && conversation.instagram_id) {
-        const { data: igAccount } = await supabase
-          .from('instagram_accounts')
-          .select('ig_account_id')
-          .eq('id', conversation.instagram_id)
-          .single();
-        if (igAccount) {
-          sent = await sendInstagramMessage(igAccount.ig_account_id, conversation.sender_id, messageText, accessToken);
-        }
+      } else if (platform === 'instagram') {
+        sent = await sendMessage(conversation.sender_id, messageText, accessToken, 'instagram');
       } else if (platform === 'whatsapp' && conversation.whatsapp_id) {
         const { data: waAccount } = await supabase
           .from('whatsapp_accounts')

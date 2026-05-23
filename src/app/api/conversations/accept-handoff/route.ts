@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,12 +50,7 @@ export async function POST(request: NextRequest) {
       await sendMessage(conversation.sender_id, handoffMsg, accessToken, 'messenger');
     } else if (platform === 'instagram' && conversation.instagram_accounts) {
       accessToken = decrypt(conversation.instagram_accounts.ig_access_token);
-      await sendInstagramMessage(
-        conversation.instagram_accounts.ig_account_id,
-        conversation.sender_id,
-        handoffMsg,
-        accessToken
-      );
+      await sendMessage(conversation.sender_id, handoffMsg, accessToken, 'instagram');
     } else if (platform === 'whatsapp' && conversation.whatsapp_accounts) {
       accessToken = decrypt(conversation.whatsapp_accounts.access_token);
       await sendWhatsAppMessage(
