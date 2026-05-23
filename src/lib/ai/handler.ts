@@ -97,7 +97,10 @@ export async function handleAIResponse(
     }
 
     // Atomic credit deduction
-    const { data: deducted } = await supabase.rpc('deduct_credit', { p_user_id: targetUserId });
+    const { data: deducted, error: deductError } = await supabase.rpc('deduct_credit', { p_user_id: targetUserId });
+    if (deductError) {
+      console.error('Credit deduction error:', deductError);
+    }
     if (!deducted) {
       const fallback = settings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
       await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings);
@@ -110,7 +113,7 @@ export async function handleAIResponse(
     let masterPrompt: string | null = null;
 
     const [{ data: activeProvider }, { data: platformCfg }] = await Promise.all([
-      supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).single(),
+      supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
     ]);
 
@@ -131,6 +134,12 @@ export async function handleAIResponse(
     let businessId: string | null = null;
     if (settings?.business_id) {
       businessId = settings.business_id;
+    } else if (platform === 'telegram' && pageDbId) {
+      const { data: tg } = await supabase.from('telegram_bots').select('business_id').eq('id', pageDbId).maybeSingle();
+      businessId = tg?.business_id || null;
+    } else if (platform === 'discord' && pageDbId) {
+      const { data: dc } = await supabase.from('discord_bots').select('business_id').eq('id', pageDbId).maybeSingle();
+      businessId = dc?.business_id || null;
     } else if (pageDbId) {
       const { data: page } = await supabase.from('connected_pages').select('business_id').eq('id', pageDbId).single();
       businessId = page?.business_id || null;
@@ -140,12 +149,6 @@ export async function handleAIResponse(
     } else if (whatsappDbId) {
       const { data: wa } = await supabase.from('whatsapp_accounts').select('business_id').eq('id', whatsappDbId).single();
       businessId = wa?.business_id || null;
-    } else if (platform === 'telegram') {
-      const { data: tg } = await supabase.from('telegram_bots').select('business_id').eq('id', pageDbId || '').maybeSingle();
-      businessId = tg?.business_id || null;
-    } else if (platform === 'discord') {
-      const { data: dc } = await supabase.from('discord_bots').select('business_id').eq('id', pageDbId || '').maybeSingle();
-      businessId = dc?.business_id || null;
     }
 
     // If we found a business_id, refetch ai_settings scoped to it

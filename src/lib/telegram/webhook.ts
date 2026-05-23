@@ -15,8 +15,39 @@ interface TelegramUpdate {
   };
 }
 
+const DEFAULT_AI_SETTINGS: AISettings = {
+  is_active: true,
+  model: 'openai/gpt-4o-mini',
+  temperature: 0.7,
+  max_tokens: 500,
+  conversation_memory_count: 10,
+  system_prompt: null,
+  greeting_message: null,
+  greeting_enabled: false,
+  keywords_blacklist: [],
+  business_hours_only: false,
+  business_hours_start: null,
+  business_hours_end: null,
+  timezone: null,
+  fallback_response: null,
+  human_handoff_enabled: false,
+  agent_display_name: null,
+  ai_agent_name: null,
+  agent_role: null,
+  business_name: null,
+  page_id: null,
+  instagram_id: null,
+  telegram_id: null,
+  whatsapp_id: null,
+  discord_id: null,
+  business_id: null,
+};
+
 export async function processTelegramUpdate(update: TelegramUpdate, botId?: string): Promise<void> {
-  if (!update.message?.text || !update.message?.chat) return;
+  if (!update.message?.text || !update.message?.chat) {
+    console.warn('Telegram update skipped: no text or chat', { update_id: update.update_id });
+    return;
+  }
 
   const supabase = await createAdminClient();
   const chatId = String(update.message.chat.id);
@@ -34,28 +65,56 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
       .from('telegram_bots')
       .select('*, user:users!user_id(*)')
       .eq('id', botId)
-      .single();
+      .maybeSingle();
     matchedBot = bot;
+    if (!matchedBot) {
+      console.warn('Telegram bot not found for id:', botId);
+      return;
+    }
   } else {
     // Fallback: try to match by mention in group chats
-    if (update.message.chat.type === 'private') return;
+    if (update.message.chat.type === 'private') {
+      console.warn('Telegram mention matching skipped: private chat, no botId');
+      return;
+    }
 
     const { data: bots } = await supabase.from('telegram_bots').select('*, user:users!user_id(*)');
-    if (!bots || bots.length === 0) return;
+    if (!bots || bots.length === 0) {
+      console.warn('Telegram mention matching skipped: no bots found');
+      return;
+    }
 
     const lowerMsg = messageText.toLowerCase();
     matchedBot = bots.find((b: any) =>
       b.bot_username && lowerMsg.includes(`@${b.bot_username.toLowerCase()}`)
     );
-    if (!matchedBot) return;
+    if (!matchedBot) {
+      console.warn('Telegram mention matching: no matching bot username in message');
+      return;
+    }
   }
 
   if (!matchedBot) return;
 
   const user = matchedBot.user as any;
-  if (!user?.is_active) return;
+  if (!user?.is_active) {
+    console.warn('Telegram update skipped: user inactive', { user_id: matchedBot.user_id });
+    return;
+  }
 
-  const botToken = decrypt(matchedBot.bot_token);
+  if (matchedBot.is_active === false) {
+    console.warn('Telegram update skipped: bot inactive', { bot_id: matchedBot.id });
+    return;
+  }
+
+  let botToken: string;
+  try {
+    botToken = decrypt(matchedBot.bot_token);
+  } catch {
+    console.error('Telegram decrypt failed for bot:', matchedBot.id);
+    return;
+  }
+
   const channelField = 'telegram_id';
   const channelDbId = matchedBot.id;
 
@@ -66,7 +125,7 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
     .eq('user_id', matchedBot.user_id)
     .eq('sender_id', senderId)
     .eq('platform', 'telegram')
-    .single();
+    .maybeSingle();
 
   if (conversation) {
     await supabase
@@ -92,9 +151,12 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
         [channelField]: channelDbId,
       })
       .select()
-      .single();
+      .maybeSingle();
 
-    if (!newConv) return;
+    if (!newConv) {
+      console.warn('Telegram: failed to create conversation', { senderId, platform: 'telegram' });
+      return;
+    }
     conversation = newConv;
   }
 
@@ -114,7 +176,10 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
   }
 
   // Check if AI is paused
-  if (conversation.is_ai_paused) return;
+  if (conversation.is_ai_paused) {
+    console.warn('Telegram: AI paused for conversation', { conversationId });
+    return;
+  }
 
   // Get AI settings (scoped to telegram bot)
   let { data: aiSettings } = await supabase
@@ -136,7 +201,16 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
     aiSettings = globalSettings;
   }
 
-  if (!aiSettings?.is_active) return;
+  // If still no AI settings, use defaults (like Meta webhook does)
+  if (!aiSettings) {
+    console.warn('Telegram: no AI settings found, using defaults');
+    aiSettings = { ...DEFAULT_AI_SETTINGS, user_id: matchedBot.user_id };
+  }
+
+  if (!aiSettings.is_active) {
+    console.warn('Telegram: AI settings inactive');
+    return;
+  }
 
   // Check business_id scoping
   let businessId: string | null = null;
