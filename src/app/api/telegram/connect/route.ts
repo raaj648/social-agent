@@ -31,19 +31,8 @@ export async function POST(request: NextRequest) {
       .eq('bot_token', encryptedToken)
       .maybeSingle();
 
-    // Get the app URL for webhook
-    let appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-    if (!appUrl) {
-      const { data: settings } = await supabase
-        .from('platform_settings')
-        .select('value')
-        .eq('key', 'app_url')
-        .maybeSingle();
-      appUrl = (settings?.value as string) || 'http://localhost:3000';
-    }
-    // Remove protocol for path construction
-    const urlObj = new URL(appUrl);
-    const baseUrl = urlObj.origin;
+    // Get the app URL for webhook — use request origin first (most reliable in production)
+    const baseUrl = request.nextUrl.origin;
 
     if (existing) {
       // Update existing bot
@@ -57,7 +46,10 @@ export async function POST(request: NextRequest) {
         .eq('id', existing.id);
 
       const webhookUrl = `${baseUrl}/api/webhooks/telegram/${existing.id}`;
-      await setTelegramWebhook(botToken, webhookUrl);
+      const { success, error } = await setTelegramWebhook(botToken, webhookUrl);
+      if (!success) {
+        return NextResponse.json({ error: `Failed to set Telegram webhook: ${error}` }, { status: 500 });
+      }
 
       return NextResponse.json({ success: true, bot: botInfo });
     }
@@ -76,10 +68,10 @@ export async function POST(request: NextRequest) {
     }
 
     const webhookUrl = `${baseUrl}/api/webhooks/telegram/${newBot.id}`;
-    const webhookSet = await setTelegramWebhook(botToken, webhookUrl);
-    if (!webhookSet) {
+    const { success, error } = await setTelegramWebhook(botToken, webhookUrl);
+    if (!success) {
       await supabase.from('telegram_bots').delete().eq('id', newBot.id);
-      return NextResponse.json({ error: 'Failed to set Telegram webhook. Check that your bot token is valid.' }, { status: 500 });
+      return NextResponse.json({ error: `Failed to set Telegram webhook: ${error}` }, { status: 500 });
     }
 
     await supabase.from('telegram_bots').update({ webhook_url: webhookUrl }).eq('id', newBot.id);

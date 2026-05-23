@@ -31,7 +31,7 @@ export async function sendTelegramMessage(
 export async function setTelegramWebhook(
   botToken: string,
   webhookUrl: string
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   try {
     const url = `${TELEGRAM_API}${botToken}/setWebhook`;
     const res = await fetch(url, {
@@ -46,12 +46,12 @@ export async function setTelegramWebhook(
     const data = await res.json();
     if (!data.ok) {
       console.error('Telegram setWebhook error:', data.description);
-      return false;
+      return { success: false, error: data.description || 'Unknown error' };
     }
-    return true;
+    return { success: true };
   } catch (error) {
     console.error('Telegram setWebhook exception:', error);
-    return false;
+    return { success: false, error: error instanceof Error ? error.message : 'Request failed' };
   }
 }
 
