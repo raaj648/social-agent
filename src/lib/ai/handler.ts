@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendMessage, sendInstagramMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
+import { sendTelegramMessage } from '@/lib/telegram/bot';
+import { sendDiscordMessage } from '@/lib/discord/bot';
 import { createCompletion, createFallbackResponse } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
@@ -16,7 +18,7 @@ export async function handleAIResponse(
   senderId: string,
   incomingMessage: string,
   accessToken: string,
-  platform: 'messenger' | 'instagram' | 'whatsapp',
+  platform: 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord',
   aiSettings: AISettings
 ): Promise<void> {
   try {
@@ -138,6 +140,12 @@ export async function handleAIResponse(
     } else if (whatsappDbId) {
       const { data: wa } = await supabase.from('whatsapp_accounts').select('business_id').eq('id', whatsappDbId).single();
       businessId = wa?.business_id || null;
+    } else if (platform === 'telegram') {
+      const { data: tg } = await supabase.from('telegram_bots').select('business_id').eq('id', pageDbId || '').maybeSingle();
+      businessId = tg?.business_id || null;
+    } else if (platform === 'discord') {
+      const { data: dc } = await supabase.from('discord_bots').select('business_id').eq('id', pageDbId || '').maybeSingle();
+      businessId = dc?.business_id || null;
     }
 
     // If we found a business_id, refetch ai_settings scoped to it
@@ -434,7 +442,7 @@ async function sendPlatformMessage(
   recipientId: string,
   text: string,
   accessToken: string,
-  platform: 'messenger' | 'instagram' | 'whatsapp',
+  platform: 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord',
   instagramDbId: string | null,
   whatsappDbId: string | null,
   aiSettings: AISettings
@@ -461,6 +469,21 @@ async function sendPlatformMessage(
 
     if (!waAccount) return false;
     return sendWhatsAppMessage(waAccount.phone_number_id, recipientId, text, accessToken);
+  }
+
+  if (platform === 'telegram') {
+    return sendTelegramMessage(accessToken, recipientId, text);
+  }
+
+  if (platform === 'discord') {
+    const supabase = await createAdminClient();
+    const { data: dcBot } = await supabase
+      .from('discord_bots')
+      .select('channel_id')
+      .eq('id', whatsappDbId || '')
+      .maybeSingle();
+    const channelId = dcBot?.channel_id || recipientId;
+    return sendDiscordMessage(accessToken, channelId, text);
   }
 
   return sendMessage(recipientId, text, accessToken, 'messenger');

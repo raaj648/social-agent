@@ -287,8 +287,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       human_handoff_enabled: true, human_handoff_message: '{agent_name} has joined the chat',
       show_handoff_on_pause: false, auto_resume_minutes: null,
       business_name: null, agent_role: 'Sales Agent',
-      id: '', user_id: '', business_id: null, page_id: null, instagram_id: null, system_prompt: null,
-    } as AISettings;
+      id: '', user_id: '', business_id: null, page_id: null, instagram_id: null, telegram_id: null, discord_id: null, system_prompt: null,
+    } as unknown as AISettings;
   } else if (!aiSettings.is_active) {
     return;
   }

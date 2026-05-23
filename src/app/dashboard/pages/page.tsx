@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw } from 'lucide-react';
+import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw, Send, Gamepad2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -29,6 +29,21 @@ interface WhatsAppAccount {
   is_active: boolean;
 }
 
+interface TelegramBot {
+  id: string;
+  bot_username: string | null;
+  is_active: boolean;
+}
+
+interface DiscordBot {
+  id: string;
+  bot_username: string | null;
+  guild_id: string | null;
+  channel_id: string | null;
+  client_id: string | null;
+  is_active: boolean;
+}
+
 function PagesPageInner() {
   usePageTitle('Connected Accounts');
   const [pages, setPages] = useState<ConnectedPage[]>([]);
@@ -42,12 +57,22 @@ function PagesPageInner() {
   const [connectingWa, setConnectingWa] = useState(false);
   const [connectingWaFb, setConnectingWaFb] = useState(false);
   const [waError, setWaError] = useState('');
-  const [confirmDisconnect, setConfirmDisconnect] = useState<{ type: 'page' | 'whatsapp'; id: string } | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord'; id: string } | null>(null);
   const [showAddPages, setShowAddPages] = useState(false);
   const [availablePages, setAvailablePages] = useState<Array<{ page_id: string; page_name: string; page_category: string | null; picture_url: string | null }>>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [connectingPages, setConnectingPages] = useState(false);
   const [selectedAvailablePages, setSelectedAvailablePages] = useState<Set<string>>(new Set());
+  const [telegramBots, setTelegramBots] = useState<TelegramBot[]>([]);
+  const [discordBots, setDiscordBots] = useState<DiscordBot[]>([]);
+  const [showTelegramForm, setShowTelegramForm] = useState(false);
+  const [telegramToken, setTelegramToken] = useState('');
+  const [connectingTelegram, setConnectingTelegram] = useState(false);
+  const [showDiscordForm, setShowDiscordForm] = useState(false);
+  const [discordForm, setDiscordForm] = useState({ botToken: '', clientId: '', guildId: '', channelId: '' });
+  const [connectingDiscord, setConnectingDiscord] = useState(false);
+  const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
+  const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
   const searchParams = useSearchParams();
@@ -55,16 +80,20 @@ function PagesPageInner() {
   const loadPages = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const [pagesRes, igRes, waRes] = await Promise.all([
+    const [pagesRes, igRes, waRes, tgRes, dcRes] = await Promise.all([
       supabase.from('connected_pages').select('*').eq('user_id', user.id),
       supabase.from('instagram_accounts').select('*').eq('user_id', user.id),
       supabase.from('whatsapp_accounts').select('*').eq('user_id', user.id),
+      supabase.from('telegram_bots').select('*').eq('user_id', user.id),
+      supabase.from('discord_bots').select('*').eq('user_id', user.id),
     ]);
 
     setPages((pagesRes.data || []).map((p) => ({
       ...p, instagram: (igRes.data || []).find((ig) => ig.page_id === p.id),
     })));
     setWhatsappAccounts(waRes.data || []);
+    setTelegramBots(tgRes.data || []);
+    setDiscordBots(dcRes.data || []);
     setLoading(false);
   }, []);
 
@@ -191,6 +220,91 @@ async function handleFacebookConnect() {
       else next.add(pageId);
       return next;
     });
+  }
+
+  async function handleConnectTelegram() {
+    if (!telegramToken) return;
+    setConnectingTelegram(true);
+    try {
+      const res = await fetch('/api/telegram/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: telegramToken }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowTelegramForm(false);
+        setTelegramToken('');
+        toast.success('Telegram bot connected successfully');
+        loadPages();
+      } else {
+        toast.error(data.error || 'Failed to connect Telegram bot');
+      }
+    } catch {
+      toast.error('Failed to connect Telegram bot');
+    } finally {
+      setConnectingTelegram(false);
+    }
+  }
+
+  async function handleDisconnectTelegram(id: string) {
+    setDisconnectingTg(id);
+    try {
+      const res = await fetch(`/api/telegram/disconnect`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to disconnect');
+      await loadPages();
+      toast.success('Telegram bot disconnected');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to disconnect');
+    } finally {
+      setDisconnectingTg(null);
+    }
+  }
+
+  async function handleConnectDiscord() {
+    if (!discordForm.botToken) return;
+    setConnectingDiscord(true);
+    try {
+      const res = await fetch('/api/discord/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(discordForm),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowDiscordForm(false);
+        setDiscordForm({ botToken: '', clientId: '', guildId: '', channelId: '' });
+        toast.success('Discord bot connected successfully');
+        loadPages();
+      } else {
+        toast.error(data.error || 'Failed to connect Discord bot');
+      }
+    } catch {
+      toast.error('Failed to connect Discord bot');
+    } finally {
+      setConnectingDiscord(false);
+    }
+  }
+
+  async function handleDisconnectDiscord(id: string) {
+    setDisconnectingDc(id);
+    try {
+      const res = await fetch(`/api/discord/disconnect`, {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to disconnect');
+      await loadPages();
+      toast.success('Discord bot disconnected');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to disconnect');
+    } finally {
+      setDisconnectingDc(null);
+    }
   }
 
   async function handleLinkInstagram(pageId: string) {
@@ -479,6 +593,270 @@ async function handleFacebookConnect() {
           </Card>
         )}
       </div>
+
+      {/* Telegram */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Send className="h-5 w-5 text-blue-500" />
+            Telegram
+          </h2>
+          {telegramBots.length === 0 && (
+            <Button onClick={() => setShowTelegramForm(true)} className="gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+              <Plus className="h-4 w-4" /> Connect Telegram Bot
+            </Button>
+          )}
+        </div>
+
+        {telegramBots.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-4 py-12">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100">
+                <Send className="h-8 w-8 text-blue-500" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium">No Telegram bot connected</p>
+                <p className="mt-1 text-sm text-muted-foreground">Connect a Telegram bot to automate replies via Telegram Bot API.</p>
+              </div>
+              <Button onClick={() => setShowTelegramForm(true)} className="gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                <Plus className="h-4 w-4" /> Connect Telegram Bot
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {telegramBots.map((bot) => (
+              <Card key={bot.id} className="card-hover overflow-hidden">
+                <div className="h-1.5 bg-gradient-to-r from-blue-400 to-cyan-500" />
+                <CardHeader className="flex flex-row items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 text-white shadow">
+                    <Send className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg truncate">@{bot.bot_username || 'Telegram Bot'}</CardTitle>
+                    <p className="text-xs text-muted-foreground">Telegram Bot</p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2 text-destructive hover:text-destructive"
+                      onClick={() => handleDisconnectTelegram(bot.id)}
+                      disabled={disconnectingTg === bot.id}
+                    >
+                      {disconnectingTg === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Disconnect
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Discord */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Gamepad2 className="h-5 w-5 text-indigo-500" />
+            Discord
+          </h2>
+          {discordBots.length === 0 && (
+            <Button onClick={() => setShowDiscordForm(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
+              <Plus className="h-4 w-4" /> Connect Discord Bot
+            </Button>
+          )}
+        </div>
+
+        {discordBots.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-4 py-12">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100">
+                <Gamepad2 className="h-8 w-8 text-indigo-500" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium">No Discord bot connected</p>
+                <p className="mt-1 text-sm text-muted-foreground">Connect a Discord bot to automate replies via slash commands.</p>
+              </div>
+              <Button onClick={() => setShowDiscordForm(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Plus className="h-4 w-4" /> Connect Discord Bot
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {discordBots.map((bot) => (
+              <Card key={bot.id} className="card-hover overflow-hidden">
+                <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500" />
+                <CardHeader className="flex flex-row items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow">
+                    <Gamepad2 className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg truncate">{bot.bot_username || 'Discord Bot'}</CardTitle>
+                    <p className="text-xs text-muted-foreground">{bot.guild_id ? `Guild: ${bot.guild_id}` : 'Discord Bot'}</p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2 text-destructive hover:text-destructive"
+                      onClick={() => handleDisconnectDiscord(bot.id)}
+                      disabled={disconnectingDc === bot.id}
+                    >
+                      {disconnectingDc === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Disconnect
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Telegram Connect Modal */}
+      {showTelegramForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !connectingTelegram && setShowTelegramForm(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600">
+                  <Send className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold">Connect Telegram Bot</h3>
+              </div>
+              <button onClick={() => !connectingTelegram && setShowTelegramForm(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Create a bot via <strong>@BotFather</strong> on Telegram, then enter the bot token below.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Bot Token *</label>
+                <input
+                  value={telegramToken}
+                  onChange={(e) => setTelegramToken(e.target.value)}
+                  placeholder="e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                  type="password"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowTelegramForm(false)} disabled={connectingTelegram} className="flex-1">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConnectTelegram}
+                  disabled={connectingTelegram || !telegramToken}
+                  className="flex-1 gap-2 bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  {connectingTelegram ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {connectingTelegram ? 'Connecting...' : 'Connect'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Discord Connect Modal */}
+      {showDiscordForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !connectingDiscord && setShowDiscordForm(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600">
+                  <Gamepad2 className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold">Connect Discord Bot</h3>
+              </div>
+              <button onClick={() => !connectingDiscord && setShowDiscordForm(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Create a bot in the <strong>Discord Developer Portal</strong>, enable Message Content Intent, get the bot token and invite it to your server.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Bot Token *</label>
+                <input
+                  value={discordForm.botToken}
+                  onChange={(e) => setDiscordForm(f => ({ ...f, botToken: e.target.value }))}
+                  placeholder="e.g. MTK4Nz...NzY5MA.GkZ...KJHg"
+                  type="password"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Client ID</label>
+                <input
+                  value={discordForm.clientId}
+                  onChange={(e) => setDiscordForm(f => ({ ...f, clientId: e.target.value }))}
+                  placeholder="From Discord Developer Portal"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Guild (Server) ID</label>
+                <input
+                  value={discordForm.guildId}
+                  onChange={(e) => setDiscordForm(f => ({ ...f, guildId: e.target.value }))}
+                  placeholder="Right-click server → Copy ID"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Channel ID (for replies)</label>
+                <input
+                  value={discordForm.channelId}
+                  onChange={(e) => setDiscordForm(f => ({ ...f, channelId: e.target.value }))}
+                  placeholder="Right-click channel → Copy ID"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowDiscordForm(false)} disabled={connectingDiscord} className="flex-1">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConnectDiscord}
+                  disabled={connectingDiscord || !discordForm.botToken}
+                  className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {connectingDiscord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {connectingDiscord ? 'Connecting...' : 'Connect'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WhatsApp Connect Modal */}
       {showWaForm && (

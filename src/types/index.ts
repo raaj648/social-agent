@@ -46,6 +46,8 @@ export interface Conversation {
   page_id: string | null;
   instagram_id: string | null;
   whatsapp_id: string | null;
+  telegram_id: string | null;
+  discord_id: string | null;
   platform: Platform;
   sender_id: string;
   sender_name: string | null;
@@ -111,6 +113,8 @@ export interface AISettings {
   business_id: string | null;
   page_id: string | null;
   instagram_id: string | null;
+  telegram_id: string | null;
+  discord_id: string | null;
   model: string;
   system_prompt: string | null;
   temperature: number;
@@ -253,6 +257,32 @@ export interface BillingPlan {
   updated_at: string;
 }
 
+export interface TelegramBot {
+  id: string;
+  user_id: string;
+  business_id: string | null;
+  bot_token: string;
+  bot_username: string | null;
+  webhook_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscordBot {
+  id: string;
+  user_id: string;
+  business_id: string | null;
+  bot_token: string;
+  client_id: string | null;
+  guild_id: string | null;
+  channel_id: string | null;
+  bot_username: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Business {
   id: string;
   user_id: string;
@@ -262,4 +292,4 @@ export interface Business {
   updated_at: string;
 }
 
-export type Platform = 'messenger' | 'instagram' | 'whatsapp';
+export type Platform = 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord';
