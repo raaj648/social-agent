@@ -33,7 +33,6 @@ export async function GET() {
         page_name: p.name,
         page_category: p.category,
         picture_url: p.picture?.data?.url,
-        access_token: p.access_token,
       }));
 
     return NextResponse.json({ pages });

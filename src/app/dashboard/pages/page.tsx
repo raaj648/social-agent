@@ -4,12 +4,13 @@ import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw, Send, Gamepad2, LayoutDashboard, Building2 } from 'lucide-react';
+import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw, Send, Gamepad2, LayoutDashboard, Building2, ChevronDown } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { usePageTitle } from '@/lib/use-page-title';
 import BusinessSelector from '@/components/business/BusinessSelector';
+import type { Business } from '@/types';
 
 interface ConnectedPage {
   id: string;
@@ -18,6 +19,7 @@ interface ConnectedPage {
   picture_url: string | null;
   page_category: string | null;
   subscribed: boolean;
+  business_id: string | null;
   instagram?: { id: string; username: string; name: string };
 }
 
@@ -28,12 +30,14 @@ interface WhatsAppAccount {
   business_name: string | null;
   waba_id: string | null;
   is_active: boolean;
+  business_id: string | null;
 }
 
 interface TelegramBot {
   id: string;
   bot_username: string | null;
   is_active: boolean;
+  business_id: string | null;
 }
 
 interface DiscordBot {
@@ -43,6 +47,7 @@ interface DiscordBot {
   channel_id: string | null;
   client_id: string | null;
   is_active: boolean;
+  business_id: string | null;
 }
 
 function PagesPageInner() {
@@ -75,6 +80,9 @@ function PagesPageInner() {
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
   const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [showInstagramGuide, setShowInstagramGuide] = useState<string | null>(null);
+  const [assigningBusiness, setAssigningBusiness] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord' | 'instagram'; id: string } | null>(null);
   const fbSectionRef = useRef<HTMLDivElement>(null);
   const waSectionRef = useRef<HTMLDivElement>(null);
   const tgSectionRef = useRef<HTMLDivElement>(null);
@@ -119,10 +127,31 @@ function PagesPageInner() {
     setLoading(false);
   }, [activeBusinessId]);
 
+  const loadBusinesses = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id).order('created_at');
+    setBusinesses(data || []);
+  }, []);
+
+  async function handleAssignBusiness(type: string, id: string, businessId: string | null) {
+    const table = type === 'page' ? 'connected_pages'
+      : type === 'whatsapp' ? 'whatsapp_accounts'
+      : type === 'telegram' ? 'telegram_bots'
+      : type === 'discord' ? 'discord_bots'
+      : 'instagram_accounts';
+    const idColumn = 'id';
+    await supabase.from(table).update({ business_id: businessId }).eq(idColumn, id);
+    await loadPages();
+    setAssigningBusiness(null);
+    toast.success('Business assigned');
+  }
+
   useEffect(() => {
     setLoading(true);
     loadPages();
-  }, [loadPages, activeBusinessId]);
+    loadBusinesses();
+  }, [loadPages, activeBusinessId, loadBusinesses]);
 
   useEffect(() => {
     const error = searchParams.get('error');
@@ -160,7 +189,7 @@ function PagesPageInner() {
 async function handleWhatsAppFacebookConnect() {
     setConnectingWaFb(true);
     const origin = window.location.origin;
-    const state = crypto.randomUUID();
+    const state = JSON.stringify({ csrf: crypto.randomUUID(), businessId: activeBusinessId });
     sessionStorage.setItem('fb_wa_oauth_state', state);
     let appId = '';
     try { const r = await fetch('/api/meta/app-id'); const d = await r.json(); if (d.appId) appId = d.appId; } catch {}
@@ -169,13 +198,13 @@ async function handleWhatsAppFacebookConnect() {
         toast.error('Meta App ID not configured');
         return;
     }
-    window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/whatsapp&response_type=code&state=${state}&scope=business_management,whatsapp_business_management,whatsapp_business_messaging`;
+    window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/whatsapp&response_type=code&state=${encodeURIComponent(state)}&scope=business_management,whatsapp_business_management,whatsapp_business_messaging`;
 }
 
 async function handleFacebookConnect() {
     setConnecting(true);
     const origin = window.location.origin;
-    const state = crypto.randomUUID();
+    const state = JSON.stringify({ csrf: crypto.randomUUID(), businessId: activeBusinessId });
     sessionStorage.setItem('fb_oauth_state', state);
     let appId = '';
     try { const r = await fetch('/api/meta/app-id'); const d = await r.json(); if (d.appId) appId = d.appId; } catch {}
@@ -184,7 +213,7 @@ async function handleFacebookConnect() {
         toast.error('Meta App ID not configured');
         return;
     }
-    window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${state}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
+    window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${encodeURIComponent(state)}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
 }
 
   async function handleOpenAddPages() {
@@ -220,7 +249,7 @@ async function handleFacebookConnect() {
       const res = await fetch('/api/pages/connect-more', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages: selected }),
+        body: JSON.stringify({ pages: selected, businessId: activeBusinessId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -333,12 +362,17 @@ async function handleFacebookConnect() {
   }
 
   async function handleLinkInstagram(pageId: string) {
+    setShowInstagramGuide(pageId);
+  }
+
+  async function handleInstagramConnectDirect(pageId: string) {
+    setShowInstagramGuide(null);
     setLinkingInstagram(pageId);
     try {
       const res = await fetch('/api/instagram/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageId }),
+        body: JSON.stringify({ pageId, businessId: activeBusinessId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -617,6 +651,11 @@ async function handleFacebookConnect() {
                           {linkingInstagram === page.page_id ? 'Linking...' : 'Link Instagram'}
                         </Button>
                       ) : null}
+                      {!activeBusinessId && businesses.length > 0 && !page.business_id && (
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'page', id: page.id })}>
+                          <Building2 className="h-4 w-4" /> Assign
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" className="gap-2 text-destructive hover:text-destructive" onClick={() => setConfirmDisconnect({ type: 'page', id: page.id })}>
                         <Trash2 className="h-4 w-4" /> Disconnect
                       </Button>
@@ -670,16 +709,23 @@ async function handleFacebookConnect() {
                     {wa.waba_id && (
                       <p className="text-xs text-muted-foreground">WABA ID: {wa.waba_id}</p>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-2 text-destructive hover:text-destructive"
-                      onClick={() => setConfirmDisconnect({ type: 'whatsapp', id: wa.id })}
-                      disabled={disconnectingWa === wa.id}
-                    >
-                      {disconnectingWa === wa.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      Disconnect
-                    </Button>
+                    <div className="flex gap-2 pt-1">
+                      {!activeBusinessId && businesses.length > 0 && !wa.business_id && (
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'whatsapp', id: wa.id })}>
+                          <Building2 className="h-4 w-4" /> Assign
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2 text-destructive hover:text-destructive"
+                        onClick={() => setConfirmDisconnect({ type: 'whatsapp', id: wa.id })}
+                        disabled={disconnectingWa === wa.id}
+                      >
+                        {disconnectingWa === wa.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Disconnect
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -747,16 +793,23 @@ async function handleFacebookConnect() {
                       <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
                       <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-2 text-destructive hover:text-destructive"
-                      onClick={() => handleDisconnectTelegram(bot.id)}
-                      disabled={disconnectingTg === bot.id}
-                    >
-                      {disconnectingTg === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      Disconnect
-                    </Button>
+                    <div className="flex gap-2 pt-1">
+                      {!activeBusinessId && businesses.length > 0 && !bot.business_id && (
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'telegram', id: bot.id })}>
+                          <Building2 className="h-4 w-4" /> Assign
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2 text-destructive hover:text-destructive"
+                        onClick={() => handleDisconnectTelegram(bot.id)}
+                        disabled={disconnectingTg === bot.id}
+                      >
+                        {disconnectingTg === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Disconnect
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -812,16 +865,23 @@ async function handleFacebookConnect() {
                       <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
                       <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-2 text-destructive hover:text-destructive"
-                      onClick={() => handleDisconnectDiscord(bot.id)}
-                      disabled={disconnectingDc === bot.id}
-                    >
-                      {disconnectingDc === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      Disconnect
-                    </Button>
+                    <div className="flex gap-2 pt-1">
+                      {!activeBusinessId && businesses.length > 0 && !bot.business_id && (
+                        <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'discord', id: bot.id })}>
+                          <Building2 className="h-4 w-4" /> Assign
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2 text-destructive hover:text-destructive"
+                        onClick={() => handleDisconnectDiscord(bot.id)}
+                        disabled={disconnectingDc === bot.id}
+                      >
+                        {disconnectingDc === bot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Disconnect
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1141,6 +1201,127 @@ async function handleFacebookConnect() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Instagram Guide Modal */}
+      {showInstagramGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowInstagramGuide(null)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600">
+                  <Instagram className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold">Link Instagram Account</h3>
+              </div>
+              <button onClick={() => setShowInstagramGuide(null)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Instagram requires a <strong>Professional (Business/Creator) account</strong>{' '}
+                  linked to your Facebook Page to enable auto-replies.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Step-by-step guide:</h4>
+
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">1</div>
+                  <div className="text-sm text-muted-foreground">
+                    Open the <strong>Instagram app</strong> on your phone
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">2</div>
+                  <div className="text-sm text-muted-foreground">
+                    Go to <strong>Settings → Account → Switch to Professional Account</strong>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">3</div>
+                  <div className="text-sm text-muted-foreground">
+                    Choose <strong>Business</strong> or <strong>Creator</strong> as your account type
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">4</div>
+                  <div className="text-sm text-muted-foreground">
+                    Select your Facebook Page to <strong>link it</strong> to your Instagram account
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">5</div>
+                  <div className="text-sm text-muted-foreground">
+                    Come back here and click <strong>"Try Connecting"</strong> below
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowInstagramGuide(null)} className="flex-1">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleInstagramConnectDirect(showInstagramGuide)}
+                  disabled={linkingInstagram === showInstagramGuide}
+                  className="flex-1 gap-2 bg-pink-600 hover:bg-pink-700 text-white"
+                >
+                  {linkingInstagram === showInstagramGuide ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}
+                  {linkingInstagram === showInstagramGuide ? 'Connecting...' : 'Try Connecting'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Business Modal */}
+      {assigningBusiness && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setAssigningBusiness(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Assign to Business
+              </h3>
+              <button onClick={() => setAssigningBusiness(null)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Select a business to assign this account to:</p>
+            <div className="space-y-1">
+              <button
+                onClick={() => handleAssignBusiness(assigningBusiness.type, assigningBusiness.id, null)}
+                className="w-full text-left rounded-xl border border-input px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+              >
+                <span className="text-muted-foreground">No business (unassigned)</span>
+              </button>
+              {businesses.map((biz) => (
+                <button
+                  key={biz.id}
+                  onClick={() => handleAssignBusiness(assigningBusiness.type, assigningBusiness.id, biz.id)}
+                  className="w-full text-left rounded-xl border border-input px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                >
+                  {biz.name}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button variant="outline" onClick={() => setAssigningBusiness(null)} className="w-full">
+                Cancel
+              </Button>
+            </div>
           </div>
         </div>
       )}

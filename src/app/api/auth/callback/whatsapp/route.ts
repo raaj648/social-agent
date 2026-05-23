@@ -8,9 +8,20 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+  const stateRaw = searchParams.get('state');
 
   if (error || !code) {
     return NextResponse.redirect(`${origin}/dashboard/pages?wa_error=${error || 'no_code'}`);
+  }
+
+  let businessId: string | null = null;
+  if (stateRaw) {
+    try {
+      const parsed = JSON.parse(stateRaw);
+      businessId = parsed.businessId || null;
+    } catch {
+      // state was a plain CSRF token, no businessId
+    }
   }
 
   const supabase = await createClient();
@@ -59,12 +70,13 @@ export async function GET(request: NextRequest) {
             .select('id')
             .eq('user_id', user.id)
             .eq('phone_number_id', pn.id)
-            .single();
+            .maybeSingle();
 
           if (existing) {
             await supabase
               .from('whatsapp_accounts')
               .update({
+                business_id: businessId,
                 phone_number: pn.display_phone_number,
                 business_name: pn.verified_name,
                 waba_id: waba.id,
@@ -74,6 +86,7 @@ export async function GET(request: NextRequest) {
           } else {
             await supabase.from('whatsapp_accounts').insert({
               user_id: user.id,
+              business_id: businessId,
               phone_number_id: pn.id,
               phone_number: pn.display_phone_number,
               business_name: pn.verified_name,

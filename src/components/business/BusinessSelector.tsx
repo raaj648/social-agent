@@ -32,9 +32,6 @@ export default function BusinessSelector({ activeBusinessId, onSelect }: Props) 
       .eq('user_id', user.id)
       .order('created_at');
     setBusinesses(data || []);
-    if (data && data.length > 0 && !activeBusinessId) {
-      onSelect(data[0].id);
-    }
     setLoading(false);
   }
 
@@ -73,6 +70,16 @@ export default function BusinessSelector({ activeBusinessId, onSelect }: Props) 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Building2 className="h-4 w-4 text-muted-foreground" />
+      <button
+        onClick={() => onSelect(null)}
+        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+          activeBusinessId === null
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted text-muted-foreground hover:bg-accent'
+        }`}
+      >
+        All Businesses
+      </button>
       {businesses.map((biz) => (
         <button
           key={biz.id}

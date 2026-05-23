@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { encrypt } from '@/lib/crypto';
+import { encrypt, decrypt } from '@/lib/crypto';
 import { subscribePageToWebhook } from '@/lib/meta/graph';
+import { getInstagramBusinessAccount } from '@/lib/meta/graph';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pages }: { pages: Array<{ page_id: string; page_name: string; page_category?: string; picture_url?: string; access_token: string }> } = await request.json();
+    const { pages, businessId }: { pages: Array<{ page_id: string; page_name: string; page_category?: string; picture_url?: string; access_token: string }>; businessId?: string | null } = await request.json();
     if (!pages || pages.length === 0) {
       return NextResponse.json({ error: 'No pages provided' }, { status: 400 });
     }
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
           .select('id')
           .eq('user_id', user.id)
           .eq('page_id', page.page_id)
-          .single();
+          .maybeSingle();
 
         if (existing) {
           await supabase
@@ -43,12 +44,14 @@ export async function POST(request: NextRequest) {
               page_category: page.page_category || null,
               picture_url: page.picture_url || null,
               page_access_token: encryptedToken,
+              business_id: businessId || null,
             })
             .eq('id', existing.id);
           connected++;
         } else {
           const { error: insertErr } = await supabase.from('connected_pages').insert({
             user_id: user.id,
+            business_id: businessId || null,
             page_id: page.page_id,
             page_name: page.page_name,
             page_category: page.page_category || null,
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
             .select('id')
             .eq('user_id', user.id)
             .eq('page_id', page.page_id)
-            .single();
+            .maybeSingle();
 
           if (saved) {
             const subscribed = await subscribePageToWebhook(page.page_id, page.access_token);
@@ -75,6 +78,47 @@ export async function POST(request: NextRequest) {
                 .from('connected_pages')
                 .update({ subscribed: true })
                 .eq('id', saved.id);
+            }
+
+            // Auto-detect Instagram Business Account
+            try {
+              const igAccount = await getInstagramBusinessAccount(page.page_id, page.access_token);
+              if (igAccount) {
+                const { data: existingIg } = await supabase
+                  .from('instagram_accounts')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .eq('ig_account_id', String(igAccount.ig_id))
+                  .maybeSingle();
+
+                if (existingIg) {
+                  await supabase
+                    .from('instagram_accounts')
+                    .update({
+                      page_id: saved.id,
+                      business_id: businessId || null,
+                      ig_username: igAccount.username,
+                      ig_name: igAccount.name,
+                      ig_profile_pic: igAccount.profile_picture_url || null,
+                      ig_access_token: encryptedToken,
+                    })
+                    .eq('id', existingIg.id);
+                } else {
+                  await supabase.from('instagram_accounts').insert({
+                    user_id: user.id,
+                    page_id: saved.id,
+                    business_id: businessId || null,
+                    ig_account_id: String(igAccount.ig_id),
+                    ig_username: igAccount.username,
+                    ig_name: igAccount.name,
+                    ig_profile_pic: igAccount.profile_picture_url || null,
+                    ig_access_token: encryptedToken,
+                    is_active: true,
+                  });
+                }
+              }
+            } catch {
+              // Instagram detection is optional
             }
           }
         }

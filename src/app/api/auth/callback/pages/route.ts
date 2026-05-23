@@ -8,9 +8,20 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+  const stateRaw = searchParams.get('state');
 
   if (error || !code) {
     return NextResponse.redirect(`${origin}/dashboard/pages?error=${error || 'no_code'}`);
+  }
+
+  let businessId: string | null = null;
+  if (stateRaw) {
+    try {
+      const parsed = JSON.parse(stateRaw);
+      businessId = parsed.businessId || null;
+    } catch {
+      // state was a plain CSRF token, no businessId
+    }
   }
 
   const supabase = await createClient();
@@ -63,7 +74,7 @@ export async function GET(request: NextRequest) {
           .select('id')
           .eq('user_id', user.id)
           .eq('page_id', page.id)
-          .single();
+          .maybeSingle();
 
         let savedId: string | null = existing?.id || null;
 
@@ -75,12 +86,14 @@ export async function GET(request: NextRequest) {
               page_category: page.category,
               picture_url: page.picture?.data?.url,
               page_access_token: encryptedToken,
+              business_id: businessId,
             })
             .eq('id', existing.id);
           connected++;
         } else {
           const { error: insertErr } = await supabase.from('connected_pages').insert({
             user_id: user.id,
+            business_id: businessId,
             page_id: page.id,
             page_name: page.name,
             page_category: page.category,
@@ -98,7 +111,7 @@ export async function GET(request: NextRequest) {
             .select('id')
             .eq('user_id', user.id)
             .eq('page_id', page.id)
-            .single();
+            .maybeSingle();
 
           if (saved) {
             savedId = saved.id;
@@ -127,10 +140,24 @@ export async function GET(request: NextRequest) {
                 .eq('user_id', user.id)
                 .eq('ig_account_id', String(ig.ig_id))
                 .maybeSingle();
-              if (!existingIg) {
+              if (existingIg) {
+                await supabase
+                  .from('instagram_accounts')
+                  .update({
+                    page_id: savedId,
+                    business_id: businessId,
+                    ig_username: ig.username,
+                    ig_name: ig.name,
+                    ig_profile_pic: ig.profile_picture_url || null,
+                    ig_access_token: encryptedToken,
+                    is_active: true,
+                  })
+                  .eq('id', existingIg.id);
+              } else {
                 await supabase.from('instagram_accounts').insert({
                   user_id: user.id,
                   page_id: savedId,
+                  business_id: businessId,
                   ig_account_id: String(ig.ig_id),
                   ig_username: ig.username,
                   ig_name: ig.name,

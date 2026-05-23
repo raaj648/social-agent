@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pageId } = await request.json();
+    const { pageId, businessId } = await request.json();
     if (!pageId) {
       return NextResponse.json({ error: 'Missing page ID' }, { status: 400 });
     }
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .select('id, page_access_token')
       .eq('user_id', user.id)
       .eq('page_id', pageId)
-      .single();
+      .maybeSingle();
 
     if (!connectedPage) {
       return NextResponse.json({ error: 'Page not connected' }, { status: 404 });
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const igAccount = await getInstagramBusinessAccount(pageId, pageAccessToken);
     if (!igAccount) {
       return NextResponse.json(
-        { error: 'No Instagram Business account linked to this page' },
+        { error: 'No Instagram Business account found linked to this page. Make sure your Instagram account is a Business or Creator account and is linked to this Facebook Page in Instagram settings.' },
         { status: 400 }
       );
     }
@@ -46,12 +46,14 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('user_id', user.id)
       .eq('ig_account_id', String(igAccount.ig_id))
-      .single();
+      .maybeSingle();
 
     if (existing) {
       await supabase
         .from('instagram_accounts')
         .update({
+          page_id: connectedPage.id,
+          business_id: businessId || null,
           ig_username: igAccount.username,
           ig_name: igAccount.name,
           ig_profile_pic: igAccount.profile_picture_url,
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
       await supabase.from('instagram_accounts').insert({
         user_id: user.id,
         page_id: connectedPage.id,
+        business_id: businessId || null,
         ig_account_id: String(igAccount.ig_id),
         ig_username: igAccount.username,
         ig_name: igAccount.name,
