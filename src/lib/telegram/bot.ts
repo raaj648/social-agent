@@ -40,6 +40,7 @@ export async function setTelegramWebhook(
       body: JSON.stringify({
         url: webhookUrl,
         allowed_updates: ['message'],
+        drop_pending_updates: true,
       }),
     });
     const data = await res.json();
