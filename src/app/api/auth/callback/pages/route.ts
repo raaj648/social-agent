@@ -11,14 +11,16 @@ export async function GET(request: NextRequest) {
   const stateRaw = searchParams.get('state');
 
   if (error || !code) {
-    return NextResponse.redirect(`${origin}/dashboard/pages?error=${error || 'no_code'}`);
+    return respondOrRedirect(request, `${origin}/dashboard/pages?error=${error || 'no_code'}`, { success: false, error: error || 'no_code' });
   }
 
   let businessId: string | null = null;
+  let mode: 'redirect' | 'popup' = 'redirect';
   if (stateRaw) {
     try {
       const parsed = JSON.parse(stateRaw);
       businessId = parsed.businessId || null;
+      if (parsed.mode === 'popup') mode = 'popup';
     } catch {
       // state was a plain CSRF token, no businessId
     }
@@ -27,12 +29,12 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(`${origin}/login?redirect=/dashboard/pages`);
+    return respondOrRedirect(request, `${origin}/login?redirect=/dashboard/pages`, { success: false, error: 'not_authenticated' });
   }
 
   const [metaAppId, metaAppSecret] = await Promise.all([getMetaAppId(), getMetaAppSecret()]);
   if (!metaAppId || !metaAppSecret) {
-    return NextResponse.redirect(`${origin}/dashboard/pages?error=meta_not_configured`);
+    return respondOrRedirect(request, `${origin}/dashboard/pages?error=meta_not_configured`, { success: false, error: 'meta_not_configured' });
   }
 
   try {
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.access_token) {
-      return NextResponse.redirect(`${origin}/dashboard/pages?error=token_exchange_failed`);
+      return respondOrRedirect(request, `${origin}/dashboard/pages?error=token_exchange_failed`, { success: false, error: 'token_exchange_failed' });
     }
 
     const longLivedToken = await getLongLivedUserToken(tokenData.access_token, metaAppId, metaAppSecret);
@@ -75,8 +77,6 @@ export async function GET(request: NextRequest) {
           .eq('user_id', user.id)
           .eq('page_id', page.id)
           .maybeSingle();
-
-        let savedId: string | null = existing?.id || null;
 
         if (existing) {
           await supabase
@@ -114,7 +114,6 @@ export async function GET(request: NextRequest) {
             .maybeSingle();
 
           if (saved) {
-            savedId = saved.id;
             const subscribed = await subscribePageToWebhook(page.id, page.access_token);
             if (subscribed) {
               await supabase
@@ -123,53 +122,6 @@ export async function GET(request: NextRequest) {
                 .eq('id', saved.id);
             }
           }
-        }
-
-        // Auto-detect Instagram Business Account
-        try {
-          const igRes = await fetch(
-            `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account{ig_id,username,name,profile_picture_url}&access_token=${page.access_token}`
-          );
-          if (igRes.ok) {
-            const igData = await igRes.json();
-            if (igData.instagram_business_account) {
-              const ig = igData.instagram_business_account;
-              const { data: existingIg } = await supabase
-                .from('instagram_accounts')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('ig_account_id', String(ig.ig_id))
-                .maybeSingle();
-              if (existingIg) {
-                await supabase
-                  .from('instagram_accounts')
-                  .update({
-                    page_id: savedId,
-                    business_id: businessId,
-                    ig_username: ig.username,
-                    ig_name: ig.name,
-                    ig_profile_pic: ig.profile_picture_url || null,
-                    ig_access_token: encryptedToken,
-                    is_active: true,
-                  })
-                  .eq('id', existingIg.id);
-              } else {
-                await supabase.from('instagram_accounts').insert({
-                  user_id: user.id,
-                  page_id: savedId,
-                  business_id: businessId,
-                  ig_account_id: String(ig.ig_id),
-                  ig_username: ig.username,
-                  ig_name: ig.name,
-                  ig_profile_pic: ig.profile_picture_url || null,
-                  ig_access_token: encryptedToken,
-                  is_active: true,
-                });
-              }
-            }
-          }
-        } catch {
-          // Instagram detection is optional
         }
       } catch {
         errors++;
@@ -185,9 +137,31 @@ export async function GET(request: NextRequest) {
     const redirectUrl = connected > 0
       ? `${origin}/dashboard/pages?connected=true&count=${connected}${errors > 0 ? `&errors=${errors}` : ''}`
       : `${origin}/dashboard/pages?error=connect_failed`;
-    return NextResponse.redirect(redirectUrl);
+
+    return respondOrRedirect(request, redirectUrl, { success: connected > 0, count: connected, errors });
   } catch (err) {
     console.error('Page OAuth callback error:', err);
-    return NextResponse.redirect(`${origin}/dashboard/pages?error=connect_failed`);
+    return respondOrRedirect(request, `${origin}/dashboard/pages?error=connect_failed`, { success: false, error: 'connect_failed' });
   }
+}
+
+function respondOrRedirect(request: NextRequest, redirectUrl: string, payload: Record<string, unknown>) {
+  const url = new URL(request.url);
+  const stateRaw = url.searchParams.get('state');
+  let mode = 'redirect';
+  if (stateRaw) {
+    try { const parsed = JSON.parse(stateRaw); if (parsed.mode === 'popup') mode = 'popup'; } catch {}
+  }
+
+  if (mode === 'popup') {
+    const html = `<html><body><script>
+      if (window.opener) {
+        window.opener.postMessage(${JSON.stringify({ type: 'fb-connect', ...payload })}, '*');
+      }
+      window.close();
+    </script></body></html>`;
+    return new NextResponse(html, { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+  }
+
+  return NextResponse.redirect(redirectUrl);
 }

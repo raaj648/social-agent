@@ -93,7 +93,9 @@ function PagesPageInner() {
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
   const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [showInstagramGuide, setShowInstagramGuide] = useState<string | null>(null);
+  const [showInstagramConnect, setShowInstagramConnect] = useState(false);
+  const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
+  const [loadingAvailableIg, setLoadingAvailableIg] = useState(false);
   const [assigningBusiness, setAssigningBusiness] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord' | 'instagram'; id: string } | null>(null);
   const fbSectionRef = useRef<HTMLDivElement>(null);
   const igSectionRef = useRef<HTMLDivElement>(null);
@@ -216,7 +218,7 @@ async function handleWhatsAppFacebookConnect() {
 async function handleFacebookConnect() {
     setConnecting(true);
     const origin = window.location.origin;
-    const state = JSON.stringify({ csrf: crypto.randomUUID(), businessId: activeBusinessId });
+    const state = JSON.stringify({ csrf: crypto.randomUUID(), businessId: activeBusinessId, mode: 'popup' });
     sessionStorage.setItem('fb_oauth_state', state);
     let appId = '';
     try { const r = await fetch('/api/meta/app-id'); const d = await r.json(); if (d.appId) appId = d.appId; } catch {}
@@ -225,7 +227,37 @@ async function handleFacebookConnect() {
         toast.error('Meta App ID not configured');
         return;
     }
-    window.location.href = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${encodeURIComponent(state)}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
+    const fbUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${encodeURIComponent(state)}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
+
+    const popup = window.open(fbUrl, 'fb-connect', 'width=600,height=700');
+    if (!popup) {
+      // Popup blocked — fall back to full redirect
+      window.location.href = fbUrl;
+      return;
+    }
+
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'fb-connect') {
+        window.removeEventListener('message', handler);
+        setConnecting(false);
+        loadPages();
+        if (event.data.success) {
+          toast.success(`Connected ${event.data.count || 0} page(s) successfully`);
+        } else {
+          toast.error('Failed to connect Facebook page');
+        }
+      }
+    };
+    window.addEventListener('message', handler);
+
+    // Fallback: if popup closes without message (user closed it), reset state
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        window.removeEventListener('message', handler);
+        setConnecting(false);
+      }
+    }, 1000);
 }
 
   async function handleOpenAddPages() {
@@ -373,12 +405,35 @@ async function handleFacebookConnect() {
     }
   }
 
-  async function handleLinkInstagram(pageId: string) {
-    setShowInstagramGuide(pageId);
+  async function handleOpenInstagramConnect() {
+    if (pages.length === 0) {
+      toast.info('Connect a Facebook Page first to link Instagram');
+      return;
+    }
+    setShowInstagramConnect(true);
+    setLoadingAvailableIg(true);
+    setAvailableIgPages([]);
+    try {
+      const res = await fetch('/api/instagram/available-pages');
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to load available Instagram accounts');
+        setShowInstagramConnect(false);
+        return;
+      }
+      setAvailableIgPages(data.pages || []);
+      if (!data.pages || data.pages.length === 0) {
+        toast.info('No Instagram Business accounts found. Make sure your Instagram is a Professional account linked to a Facebook Page.');
+      }
+    } catch {
+      toast.error('Failed to load available Instagram accounts');
+      setShowInstagramConnect(false);
+    } finally {
+      setLoadingAvailableIg(false);
+    }
   }
 
-  async function handleInstagramConnectDirect(pageId: string) {
-    setShowInstagramGuide(null);
+  async function handleConnectInstagram(pageId: string) {
     setLinkingInstagram(pageId);
     try {
       const res = await fetch('/api/instagram/connect', {
@@ -388,6 +443,7 @@ async function handleFacebookConnect() {
       });
       const data = await res.json();
       if (data.success) {
+        setShowInstagramConnect(false);
         await loadPages();
         toast.success('Instagram linked successfully');
       } else {
@@ -676,6 +732,11 @@ async function handleFacebookConnect() {
             <Instagram className="h-5 w-5 text-pink-600" />
             Instagram
           </h2>
+          {pages.length > 0 && (
+            <Button onClick={handleOpenInstagramConnect} className="gap-2 bg-pink-600 hover:bg-pink-700 text-white" size="sm">
+              <Plus className="h-4 w-4" /> Connect Instagram
+            </Button>
+          )}
         </div>
         {instagramAccounts.length === 0 ? (
           <Card>
@@ -686,9 +747,18 @@ async function handleFacebookConnect() {
               <div className="text-center">
                 <p className="font-medium">No Instagram accounts connected</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Instagram accounts are automatically detected when you connect a Facebook Page that has a linked Instagram Business account.
+                  Connect a Facebook Page first, then click "Connect Instagram" to link your Instagram Business account.
                 </p>
               </div>
+              {pages.length === 0 ? (
+                <Button onClick={handleFacebookConnect} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                  <Facebook className="h-4 w-4" /> Connect Facebook Page First
+                </Button>
+              ) : (
+                <Button onClick={handleOpenInstagramConnect} className="gap-2 bg-pink-600 hover:bg-pink-700 text-white">
+                  <Plus className="h-4 w-4" /> Connect Instagram
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -1289,83 +1359,79 @@ async function handleFacebookConnect() {
         </div>
       )}
 
-      {/* Instagram Guide Modal */}
-      {showInstagramGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowInstagramGuide(null)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
+      {/* Instagram Connect Modal */}
+      {showInstagramConnect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !loadingAvailableIg && setShowInstagramConnect(false)}>
+          <div className="w-full max-w-lg max-h-[80vh] rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600">
                   <Instagram className="h-5 w-5 text-white" />
                 </div>
-                <h3 className="text-lg font-bold">Link Instagram Account</h3>
+                <h3 className="text-lg font-bold">Connect Instagram</h3>
               </div>
-              <button onClick={() => setShowInstagramGuide(null)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+              <button onClick={() => !loadingAvailableIg && setShowInstagramConnect(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-5">
-              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4">
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  Instagram requires a <strong>Professional (Business/Creator) account</strong>{' '}
-                  linked to your Facebook Page to enable auto-replies.
-                </p>
+            {loadingAvailableIg ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-
-              <div className="space-y-4">
-                <h4 className="font-medium text-sm">Step-by-step guide:</h4>
-
-                <div className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">1</div>
-                  <div className="text-sm text-muted-foreground">
-                    Open the <strong>Instagram app</strong> on your phone
-                  </div>
+            ) : availableIgPages.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-700 dark:text-amber-400">
+                  <p className="font-medium mb-2">No Instagram Business accounts detected.</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>Open the <strong>Instagram app</strong> on your phone</li>
+                    <li>Go to <strong>Settings → Account → Switch to Professional Account</strong></li>
+                    <li>Choose <strong>Business</strong> or <strong>Creator</strong> and link it to your Facebook Page</li>
+                    <li>Come back here and try again</li>
+                  </ol>
                 </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">2</div>
-                  <div className="text-sm text-muted-foreground">
-                    Go to <strong>Settings → Account → Switch to Professional Account</strong>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">3</div>
-                  <div className="text-sm text-muted-foreground">
-                    Choose <strong>Business</strong> or <strong>Creator</strong> as your account type
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">4</div>
-                  <div className="text-sm text-muted-foreground">
-                    Select your Facebook Page to <strong>link it</strong> to your Instagram account
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-100 dark:bg-pink-900/50 text-pink-600 text-sm font-bold">5</div>
-                  <div className="text-sm text-muted-foreground">
-                    Come back here and click <strong>"Try Connecting"</strong> below
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowInstagramGuide(null)} className="flex-1">
+                <Button variant="outline" onClick={() => setShowInstagramConnect(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={() => handleInstagramConnectDirect(showInstagramGuide)}
-                  disabled={linkingInstagram === showInstagramGuide}
-                  className="flex-1 gap-2 bg-pink-600 hover:bg-pink-700 text-white"
-                >
-                  {linkingInstagram === showInstagramGuide ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}
-                  {linkingInstagram === showInstagramGuide ? 'Connecting...' : 'Try Connecting'}
-                </Button>
               </div>
-            </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-4 shrink-0">
+                  Select an Instagram account to connect:
+                </p>
+                <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+                  {availableIgPages.map((item) => (
+                    <div key={item.ig_id} className="flex items-center gap-3 rounded-xl border border-input p-3">
+                      {item.ig_profile_pic ? (
+                        <img src={item.ig_profile_pic} alt={item.ig_username} className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 text-white">
+                          <Instagram className="h-5 w-5" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">@{item.ig_username}</p>
+                        <p className="text-xs text-muted-foreground truncate">{item.ig_name} · {item.page_name}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="gap-2 shrink-0 bg-pink-600 hover:bg-pink-700 text-white"
+                        onClick={() => handleConnectInstagram(item.page_id)}
+                        disabled={linkingInstagram === item.page_id}
+                      >
+                        {linkingInstagram === item.page_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {linkingInstagram === item.page_id ? 'Connecting...' : 'Connect'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 pt-4 shrink-0 border-t border-border mt-4">
+                  <Button variant="outline" onClick={() => setShowInstagramConnect(false)} className="flex-1">
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
