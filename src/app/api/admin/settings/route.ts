@@ -6,7 +6,7 @@ import { clearCredentialsCache } from '@/lib/credentials';
 
 export const dynamic = 'force-dynamic';
 
-const SECRET_KEYS = new Set(['meta_app_secret', 'openrouter_key', 'meta_webhook_verify_token']);
+const SECRET_KEYS = new Set(['meta_app_secret', 'openrouter_key', 'meta_webhook_verify_token', 'discord_public_key']);
 const NUMERIC_KEYS = new Set(['message_retention_days', 'cleanup_cron_interval', 'rate_limit_per_min', 'admin_stats_refresh_interval']);
 
 export async function GET() {

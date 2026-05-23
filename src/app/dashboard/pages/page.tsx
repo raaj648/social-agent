@@ -707,11 +707,9 @@ async function handleFacebookConnect() {
             <Send className="h-5 w-5 text-blue-500" />
             Telegram
           </h2>
-          {telegramBots.length === 0 && (
-            <Button onClick={() => setShowTelegramForm(true)} className="gap-2 bg-blue-500 hover:bg-blue-600 text-white">
-              <Plus className="h-4 w-4" /> Connect Telegram Bot
-            </Button>
-          )}
+          <Button onClick={() => setShowTelegramForm(true)} className="gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+            <Plus className="h-4 w-4" /> {telegramBots.length === 0 ? 'Connect Telegram Bot' : 'Add Another Bot'}
+          </Button>
         </div>
 
         {telegramBots.length === 0 ? (
@@ -774,11 +772,9 @@ async function handleFacebookConnect() {
             <Gamepad2 className="h-5 w-5 text-indigo-500" />
             Discord
           </h2>
-          {discordBots.length === 0 && (
-            <Button onClick={() => setShowDiscordForm(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-              <Plus className="h-4 w-4" /> Connect Discord Bot
-            </Button>
-          )}
+          <Button onClick={() => setShowDiscordForm(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Plus className="h-4 w-4" /> {discordBots.length === 0 ? 'Connect Discord Bot' : 'Add Another Bot'}
+          </Button>
         </div>
 
         {discordBots.length === 0 ? (

@@ -15,7 +15,7 @@ interface TelegramUpdate {
   };
 }
 
-export async function processTelegramUpdate(update: TelegramUpdate): Promise<void> {
+export async function processTelegramUpdate(update: TelegramUpdate, botId?: string): Promise<void> {
   if (!update.message?.text || !update.message?.chat) return;
 
   const supabase = await createAdminClient();
@@ -26,28 +26,28 @@ export async function processTelegramUpdate(update: TelegramUpdate): Promise<voi
     ? [update.message.from.first_name, update.message.from.last_name].filter(Boolean).join(' ')
     : update.message.chat.title || senderId;
 
-  // Find bot by chat context - look up all telegram bots and check if any match
-  // For group chats, we match differently than DMs
-  const { data: bots } = await supabase.from('telegram_bots').select('*, user:users!user_id(*)');
-
-  if (!bots || bots.length === 0) return;
-
-  // Find the correct bot: in DM the bot gets messages directly, in groups we check
+  // Look up the specific bot by ID from the webhook URL, or by token lookup
   let matchedBot: any = null;
 
-  if (update.message.chat.type === 'private') {
-    // Direct message - try all bots (only the correct one will receive this)
-    matchedBot = bots[0];
+  if (botId) {
+    const { data: bot } = await supabase
+      .from('telegram_bots')
+      .select('*, user:users!user_id(*)')
+      .eq('id', botId)
+      .single();
+    matchedBot = bot;
   } else {
-    // Group/supergroup message - check if bot is mentioned
-    const botUsernames = bots.map((b: any) => b.bot_username).filter(Boolean);
-    const mentioned = botUsernames.some((u: string) =>
-      messageText.toLowerCase().includes(`@${u.toLowerCase()}`)
-    );
-    if (!mentioned) return;
+    // Fallback: try to match by mention in group chats
+    if (update.message.chat.type === 'private') return;
+
+    const { data: bots } = await supabase.from('telegram_bots').select('*, user:users!user_id(*)');
+    if (!bots || bots.length === 0) return;
+
+    const lowerMsg = messageText.toLowerCase();
     matchedBot = bots.find((b: any) =>
-      messageText.toLowerCase().includes(`@${(b.bot_username || '').toLowerCase()}`)
-    ) || bots[0];
+      b.bot_username && lowerMsg.includes(`@${b.bot_username.toLowerCase()}`)
+    );
+    if (!matchedBot) return;
   }
 
   if (!matchedBot) return;

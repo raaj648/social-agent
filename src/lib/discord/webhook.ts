@@ -2,46 +2,19 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
 import { createDiscordInteractionResponse, sendDiscordMessage } from '@/lib/discord/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
+import { getDiscordPublicKey } from '@/lib/credentials';
 import type { AISettings } from '@/types';
 import crypto from 'crypto';
 
-const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY || '';
-
-function hexToUint8Array(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
-  return bytes;
-}
-
-export function verifyDiscordSignature(
+export async function verifyDiscordKey(
   rawBody: string,
   signature: string,
   timestamp: string
-): boolean {
-  if (!DISCORD_PUBLIC_KEY || !signature || !timestamp) return false;
+): Promise<boolean> {
+  const publicKey = await getDiscordPublicKey();
+  if (!publicKey) return false;
   try {
-    const publicKey = hexToUint8Array(DISCORD_PUBLIC_KEY);
-    const sig = hexToUint8Array(signature);
-    const message = new TextEncoder().encode(timestamp + rawBody);
-
-    return crypto.subtle
-      ? true
-      : false;
-  } catch {
-    return false;
-  }
-}
-
-export function verifyDiscordKey(
-  rawBody: string,
-  signature: string,
-  timestamp: string
-): boolean {
-  if (!DISCORD_PUBLIC_KEY) return false;
-  try {
-    const rawKey = Buffer.from(DISCORD_PUBLIC_KEY, 'hex');
+    const rawKey = Buffer.from(publicKey, 'hex');
     const derPrefix = Buffer.from('302a300506032b6570032100', 'hex');
     const derKey = Buffer.concat([derPrefix, rawKey]);
     const key = crypto.createPublicKey({

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Save, Settings, ExternalLink, RefreshCw,
   CheckCircle, AlertCircle, Shield, Globe,
-  CreditCard, Key, Plus, Trash2, X, Edit3,
+  CreditCard, Key, Plus, Trash2, X, Edit3, Gamepad2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BillingPlan } from '@/types';
@@ -51,6 +51,8 @@ export default function AdminSettingsPage() {
   const [webhookVerifyToken, setWebhookVerifyToken] = useState('');
   const [webhookVerifyTokenSet, setWebhookVerifyTokenSet] = useState(false);
   const [appUrl, setAppUrl] = useState('');
+  const [discordPublicKey, setDiscordPublicKey] = useState('');
+  const [discordPublicKeySet, setDiscordPublicKeySet] = useState(false);
 
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [editingPlan, setEditingPlan] = useState<BillingPlan | null>(null);
@@ -87,6 +89,8 @@ export default function AdminSettingsPage() {
       if (data.meta_webhook_verify_token === true) { setWebhookVerifyTokenSet(true); setWebhookVerifyToken(''); }
       else if (data.meta_webhook_verify_token !== undefined) { setWebhookVerifyTokenSet(true); setWebhookVerifyToken(String(data.meta_webhook_verify_token)); }
       if (data.app_url !== undefined) setAppUrl(String(data.app_url));
+      if (data.discord_public_key === true) { setDiscordPublicKeySet(true); setDiscordPublicKey(''); }
+      else if (data.discord_public_key !== undefined) { setDiscordPublicKeySet(true); setDiscordPublicKey(String(data.discord_public_key)); }
 
       const plansData = await plansRes.json();
       setPlans(plansData.plans || []);
@@ -111,6 +115,7 @@ export default function AdminSettingsPage() {
       };
       if (metaAppSecret) body.meta_app_secret = metaAppSecret;
       if (webhookVerifyToken) body.meta_webhook_verify_token = webhookVerifyToken;
+      if (discordPublicKey) body.discord_public_key = discordPublicKey;
 
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
@@ -122,6 +127,7 @@ export default function AdminSettingsPage() {
       toast.success('Settings saved successfully!');
       if (metaAppSecret) { setMetaAppSecretSet(true); setMetaAppSecret(''); }
       if (webhookVerifyToken) { setWebhookVerifyTokenSet(true); setWebhookVerifyToken(''); }
+      if (discordPublicKey) { setDiscordPublicKeySet(true); setDiscordPublicKey(''); }
     } catch (e: any) { toast.error(e.message || 'Failed to save settings'); }
     setSaving(false);
   }
@@ -339,6 +345,18 @@ export default function AdminSettingsPage() {
             </div>
           </div>
           <div className="space-y-6">
+            <div className="rounded-2xl border border-white/10 p-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white mb-5"><Gamepad2 className="h-4 w-4 text-indigo-400" /> Discord</h3>
+              <div className="space-y-5">
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1.5 block">Discord Public Key</label>
+                  <input type="password" value={discordPublicKey} onChange={(e) => setDiscordPublicKey(e.target.value)}
+                    placeholder={discordPublicKeySet ? 'Leave empty to keep current value' : 'Public key from Discord Developer Portal'}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
+                  <p className="text-xs text-white/30 mt-1">Used to verify Discord interaction webhook signatures. Find it in your Discord Application under General Information.</p>
+                </div>
+              </div>
+            </div>
             <div className="rounded-2xl border border-white/10 p-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
               <h3 className="flex items-center gap-2 text-sm font-semibold text-white mb-4"><ExternalLink className="h-4 w-4 text-blue-400" /> Quick Links</h3>
               <div className="space-y-2">

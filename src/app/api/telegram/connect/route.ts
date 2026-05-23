@@ -24,12 +24,26 @@ export async function POST(request: NextRequest) {
 
     const encryptedToken = encrypt(botToken);
 
-    // Check if already connected
+    // Check if this specific bot token is already connected
     const { data: existing } = await supabase
       .from('telegram_bots')
       .select('id')
-      .eq('user_id', user.id)
-      .single();
+      .eq('bot_token', encryptedToken)
+      .maybeSingle();
+
+    // Get the app URL for webhook
+    let appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    if (!appUrl) {
+      const { data: settings } = await supabase
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'app_url')
+        .maybeSingle();
+      appUrl = (settings?.value as string) || 'http://localhost:3000';
+    }
+    // Remove protocol for path construction
+    const urlObj = new URL(appUrl);
+    const baseUrl = urlObj.origin;
 
     if (existing) {
       // Update existing bot
@@ -42,37 +56,33 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', existing.id);
 
-      // Set webhook
-      const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      await setTelegramWebhook(botToken, `${origin}/api/webhooks/telegram`);
+      const webhookUrl = `${baseUrl}/api/webhooks/telegram/${existing.id}`;
+      await setTelegramWebhook(botToken, webhookUrl);
 
       return NextResponse.json({ success: true, bot: botInfo });
     }
 
-    // Get the app URL for webhook
-    let appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-    if (!appUrl) {
-      const { data: settings } = await supabase
-        .from('platform_settings')
-        .select('value')
-        .eq('key', 'app_url')
-        .maybeSingle();
-      appUrl = (settings?.value as string) || 'http://localhost:3000';
-    }
-
-    const webhookUrl = `${appUrl}/api/webhooks/telegram`;
-    const webhookSet = await setTelegramWebhook(botToken, webhookUrl);
-    if (!webhookSet) {
-      return NextResponse.json({ error: 'Failed to set Telegram webhook. Check that your bot token is valid.' }, { status: 500 });
-    }
-
-    await supabase.from('telegram_bots').insert({
+    // Insert first to get the id
+    const { data: newBot } = await supabase.from('telegram_bots').insert({
       user_id: user.id,
       business_id: businessId || null,
       bot_token: encryptedToken,
       bot_username: botInfo.username || null,
-      webhook_url: webhookUrl,
-    });
+      webhook_url: '',
+    }).select().single();
+
+    if (!newBot) {
+      return NextResponse.json({ error: 'Failed to create bot record' }, { status: 500 });
+    }
+
+    const webhookUrl = `${baseUrl}/api/webhooks/telegram/${newBot.id}`;
+    const webhookSet = await setTelegramWebhook(botToken, webhookUrl);
+    if (!webhookSet) {
+      await supabase.from('telegram_bots').delete().eq('id', newBot.id);
+      return NextResponse.json({ error: 'Failed to set Telegram webhook. Check that your bot token is valid.' }, { status: 500 });
+    }
+
+    await supabase.from('telegram_bots').update({ webhook_url: webhookUrl }).eq('id', newBot.id);
 
     await supabase.from('usage_logs').insert({
       user_id: user.id,

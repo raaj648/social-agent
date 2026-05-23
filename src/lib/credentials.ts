@@ -7,6 +7,7 @@ interface SettingsCache {
   openrouter_key_encrypted?: string;
   meta_webhook_verify_token_encrypted?: string;
   app_url?: string;
+  discord_public_key_encrypted?: string;
 }
 
 let cache: SettingsCache | null = null;
@@ -31,7 +32,7 @@ async function loadSettings(): Promise<SettingsCache> {
     const { data } = await supabase
       .from('platform_settings')
       .select('key, value')
-      .in('key', ['meta_app_id', 'meta_app_secret', 'openrouter_key', 'meta_webhook_verify_token', 'app_url']);
+      .in('key', ['meta_app_id', 'meta_app_secret', 'openrouter_key', 'meta_webhook_verify_token', 'app_url', 'discord_public_key']);
 
     cache = {};
     if (data) {
@@ -42,6 +43,7 @@ async function loadSettings(): Promise<SettingsCache> {
         else if (s.key === 'openrouter_key') cache.openrouter_key_encrypted = raw;
         else if (s.key === 'meta_webhook_verify_token') cache.meta_webhook_verify_token_encrypted = raw;
         else if (s.key === 'app_url') cache.app_url = raw;
+        else if (s.key === 'discord_public_key') cache.discord_public_key_encrypted = raw;
       }
     }
   } catch {
@@ -76,6 +78,14 @@ export async function getWebhookVerifyToken(): Promise<string> {
   const settings = await loadSettings();
   if (settings.meta_webhook_verify_token_encrypted) {
     return readEncrypted(settings.meta_webhook_verify_token_encrypted);
+  }
+  return '';
+}
+
+export async function getDiscordPublicKey(): Promise<string> {
+  const settings = await loadSettings();
+  if (settings.discord_public_key_encrypted) {
+    return readEncrypted(settings.discord_public_key_encrypted);
   }
   return '';
 }

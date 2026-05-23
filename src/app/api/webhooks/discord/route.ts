@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
     // Verify Discord signature
     if (signature && timestamp) {
-      const isValid = verifyDiscordKey(rawBody, signature, timestamp);
+      const isValid = await verifyDiscordKey(rawBody, signature, timestamp);
       if (!isValid) {
         return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }

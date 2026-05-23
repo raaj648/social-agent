@@ -24,12 +24,11 @@ export async function POST(request: NextRequest) {
 
     const encryptedToken = encrypt(botToken);
 
-    // Check if already connected for this guild
+    // Check if this specific bot token is already connected
     const { data: existing } = await supabase
       .from('discord_bots')
       .select('id')
-      .eq('user_id', user.id)
-      .eq('guild_id', guildId || '')
+      .eq('bot_token', encryptedToken)
       .maybeSingle();
 
     if (existing) {
