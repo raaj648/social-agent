@@ -15,6 +15,7 @@ interface FacebookPage {
 }
 
 interface InstagramBusinessAccount {
+  id: string;
   ig_id: number;
   username: string;
   name: string;
@@ -74,7 +75,7 @@ export async function getInstagramBusinessAccount(
 ): Promise<InstagramBusinessAccount | null> {
   const url = new URL(`${META_GRAPH_URL}/${pageId}`);
   url.searchParams.set('access_token', pageAccessToken);
-  url.searchParams.set('fields', 'instagram_business_account{ig_id,username,name,profile_picture_url}');
+  url.searchParams.set('fields', 'instagram_business_account{id,ig_id,username,name,profile_picture_url}');
 
   const res = await fetch(url.toString());
   if (!res.ok) return null;

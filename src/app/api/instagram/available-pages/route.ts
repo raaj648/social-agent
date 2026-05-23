@@ -30,6 +30,7 @@ export async function GET() {
     const availablePages: Array<{
       page_id: string;
       page_name: string;
+      id: string;
       ig_id: string;
       ig_username: string;
       ig_name: string;
@@ -46,6 +47,7 @@ export async function GET() {
           availablePages.push({
             page_id: cp.page_id,
             page_name: cp.page_name,
+            id: igAccount.id,
             ig_id: String(igAccount.ig_id),
             ig_username: igAccount.username,
             ig_name: igAccount.name,

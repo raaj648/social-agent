@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       .from('instagram_accounts')
       .select('id')
       .eq('user_id', user.id)
-      .eq('ig_account_id', String(igAccount.ig_id))
+      .eq('ig_account_id', igAccount.id)
       .maybeSingle();
 
     if (existing) {
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         .update({
           page_id: connectedPage.id,
           business_id: businessId || null,
+          ig_account_id: igAccount.id,
           ig_username: igAccount.username,
           ig_name: igAccount.name,
           ig_profile_pic: igAccount.profile_picture_url,
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         page_id: connectedPage.id,
         business_id: businessId || null,
-        ig_account_id: String(igAccount.ig_id),
+        ig_account_id: igAccount.id,
         ig_username: igAccount.username,
         ig_name: igAccount.name,
         ig_profile_pic: igAccount.profile_picture_url,
@@ -76,14 +77,15 @@ export async function POST(request: NextRequest) {
     await supabase.from('usage_logs').insert({
       user_id: user.id,
       action: 'instagram_connect',
-      metadata: { ig_username: igAccount.username, page_id: pageId },
+      metadata: { ig_username: igAccount.username, page_id: pageId, ig_account_id: igAccount.id },
     });
 
     return NextResponse.json(
       {
         success: true,
         account: {
-          id: String(igAccount.ig_id),
+          id: igAccount.id,
+          ig_id: String(igAccount.ig_id),
           username: igAccount.username,
           name: igAccount.name,
         },

@@ -94,7 +94,7 @@ function PagesPageInner() {
   const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [showInstagramConnect, setShowInstagramConnect] = useState(false);
-  const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
+  const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; id: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
   const [loadingAvailableIg, setLoadingAvailableIg] = useState(false);
   const [assigningBusiness, setAssigningBusiness] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord' | 'instagram'; id: string } | null>(null);
   const fbSectionRef = useRef<HTMLDivElement>(null);
