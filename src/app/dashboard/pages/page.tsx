@@ -4,11 +4,12 @@ import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw, Send, Gamepad2 } from 'lucide-react';
+import { Facebook, Instagram, MessageCircle, Loader2, Trash2, Link2, Plus, CheckCircle2, AlertCircle, Smartphone, X, Save, RefreshCw, Send, Gamepad2, LayoutDashboard, Building2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { usePageTitle } from '@/lib/use-page-title';
+import BusinessSelector from '@/components/business/BusinessSelector';
 
 interface ConnectedPage {
   id: string;
@@ -46,6 +47,7 @@ interface DiscordBot {
 
 function PagesPageInner() {
   usePageTitle('Connected Accounts');
+  const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
   const [pages, setPages] = useState<ConnectedPage[]>([]);
   const [whatsappAccounts, setWhatsappAccounts] = useState<WhatsAppAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,19 +75,39 @@ function PagesPageInner() {
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
   const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
+  const fbSectionRef = useRef<HTMLDivElement>(null);
+  const waSectionRef = useRef<HTMLDivElement>(null);
+  const tgSectionRef = useRef<HTMLDivElement>(null);
+  const dcSectionRef = useRef<HTMLDivElement>(null);
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
   const searchParams = useSearchParams();
 
-  const loadPages = useCallback(async () => {
+  const loadPages = useCallback(async (businessId?: string | null) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const bid = businessId !== undefined ? businessId : activeBusinessId;
+
+    let baseQuery = supabase.from('connected_pages').select('*').eq('user_id', user.id);
+    let igQuery = supabase.from('instagram_accounts').select('*').eq('user_id', user.id);
+    let waQuery = supabase.from('whatsapp_accounts').select('*').eq('user_id', user.id);
+    let tgQuery = supabase.from('telegram_bots').select('*').eq('user_id', user.id);
+    let dcQuery = supabase.from('discord_bots').select('*').eq('user_id', user.id);
+
+    if (bid) {
+      baseQuery = baseQuery.eq('business_id', bid);
+      igQuery = igQuery.eq('business_id', bid);
+      waQuery = waQuery.eq('business_id', bid);
+      tgQuery = tgQuery.eq('business_id', bid);
+      dcQuery = dcQuery.eq('business_id', bid);
+    }
+
     const [pagesRes, igRes, waRes, tgRes, dcRes] = await Promise.all([
-      supabase.from('connected_pages').select('*').eq('user_id', user.id),
-      supabase.from('instagram_accounts').select('*').eq('user_id', user.id),
-      supabase.from('whatsapp_accounts').select('*').eq('user_id', user.id),
-      supabase.from('telegram_bots').select('*').eq('user_id', user.id),
-      supabase.from('discord_bots').select('*').eq('user_id', user.id),
+      baseQuery,
+      igQuery,
+      waQuery,
+      tgQuery,
+      dcQuery,
     ]);
 
     setPages((pagesRes.data || []).map((p) => ({
@@ -95,9 +117,12 @@ function PagesPageInner() {
     setTelegramBots(tgRes.data || []);
     setDiscordBots(dcRes.data || []);
     setLoading(false);
-  }, []);
+  }, [activeBusinessId]);
 
-  useEffect(() => { loadPages(); }, [loadPages]);
+  useEffect(() => {
+    setLoading(true);
+    loadPages();
+  }, [loadPages, activeBusinessId]);
 
   useEffect(() => {
     const error = searchParams.get('error');
@@ -229,7 +254,7 @@ async function handleFacebookConnect() {
       const res = await fetch('/api/telegram/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botToken: telegramToken }),
+        body: JSON.stringify({ botToken: telegramToken, businessId: activeBusinessId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -271,7 +296,7 @@ async function handleFacebookConnect() {
       const res = await fetch('/api/discord/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(discordForm),
+        body: JSON.stringify({ ...discordForm, businessId: activeBusinessId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -387,7 +412,7 @@ async function handleFacebookConnect() {
       const res = await fetch('/api/whatsapp/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(waForm),
+        body: JSON.stringify({ ...waForm, businessId: activeBusinessId }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to connect');
@@ -406,12 +431,34 @@ async function handleFacebookConnect() {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
+  const platformCounts = {
+    facebook: pages.length,
+    instagram: pages.filter(p => p.instagram).length,
+    whatsapp: whatsappAccounts.length,
+    telegram: telegramBots.length,
+    discord: discordBots.length,
+  };
+
+  function scrollToSection(ref: React.RefObject<HTMLDivElement | null>) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   return (
     <div className="space-y-8">
+      {/* Business Selector */}
+      <div className="flex flex-wrap items-center gap-3 pb-2">
+        <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+        <BusinessSelector activeBusinessId={activeBusinessId} onSelect={setActiveBusinessId} />
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Connected Accounts</h1>
-          <p className="text-muted-foreground">Manage your Facebook Pages, Instagram, and WhatsApp accounts</p>
+          <p className="text-muted-foreground mt-1">
+            {activeBusinessId
+              ? 'Manage accounts for the selected business'
+              : 'Manage all your connected platforms'}
+          </p>
         </div>
         <Button onClick={handleFacebookConnect} disabled={connecting} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
           {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
@@ -419,8 +466,67 @@ async function handleFacebookConnect() {
         </Button>
       </div>
 
+      {/* Platform Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <button onClick={() => scrollToSection(fbSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${pages.length > 0 ? 'border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20' : 'border-muted'}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/50">
+              <Facebook className={`h-5 w-5 ${pages.length > 0 ? 'text-blue-600' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{platformCounts.facebook}</p>
+              <p className="text-xs text-muted-foreground">Facebook Pages</p>
+            </div>
+          </div>
+        </button>
+        <button onClick={() => scrollToSection(fbSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.instagram > 0 ? 'border-pink-200 bg-pink-50/50 dark:border-pink-800 dark:bg-pink-950/20' : 'border-muted'}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-pink-100 dark:bg-pink-900/50">
+              <Instagram className={`h-5 w-5 ${platformCounts.instagram > 0 ? 'text-pink-600' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{platformCounts.instagram}</p>
+              <p className="text-xs text-muted-foreground">Instagram</p>
+            </div>
+          </div>
+        </button>
+        <button onClick={() => scrollToSection(waSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.whatsapp > 0 ? 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20' : 'border-muted'}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/50">
+              <MessageCircle className={`h-5 w-5 ${platformCounts.whatsapp > 0 ? 'text-green-600' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{platformCounts.whatsapp}</p>
+              <p className="text-xs text-muted-foreground">WhatsApp</p>
+            </div>
+          </div>
+        </button>
+        <button onClick={() => scrollToSection(tgSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.telegram > 0 ? 'border-blue-300 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20' : 'border-muted'}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/50">
+              <Send className={`h-5 w-5 ${platformCounts.telegram > 0 ? 'text-sky-600' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{platformCounts.telegram}</p>
+              <p className="text-xs text-muted-foreground">Telegram</p>
+            </div>
+          </div>
+        </button>
+        <button onClick={() => scrollToSection(dcSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.discord > 0 ? 'border-indigo-200 bg-indigo-50/50 dark:border-indigo-800 dark:bg-indigo-950/20' : 'border-muted'}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
+              <Gamepad2 className={`h-5 w-5 ${platformCounts.discord > 0 ? 'text-indigo-600' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{platformCounts.discord}</p>
+              <p className="text-xs text-muted-foreground">Discord</p>
+            </div>
+          </div>
+        </button>
+      </div>
+
       {/* Facebook Pages */}
-      <div>
+      <div ref={fbSectionRef}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Facebook className="h-5 w-5 text-blue-600" />
@@ -524,7 +630,7 @@ async function handleFacebookConnect() {
       </div>
 
       {/* WhatsApp Accounts */}
-      <div>
+      <div ref={waSectionRef}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-green-600" />
@@ -595,7 +701,7 @@ async function handleFacebookConnect() {
       </div>
 
       {/* Telegram */}
-      <div>
+      <div ref={tgSectionRef}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Send className="h-5 w-5 text-blue-500" />
@@ -662,7 +768,7 @@ async function handleFacebookConnect() {
       </div>
 
       {/* Discord */}
-      <div>
+      <div ref={dcSectionRef}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Gamepad2 className="h-5 w-5 text-indigo-500" />

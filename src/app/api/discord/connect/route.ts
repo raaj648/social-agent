@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { botToken, clientId, guildId, channelId } = await request.json();
+    const { botToken, clientId, guildId, channelId, businessId } = await request.json();
     if (!botToken) {
       return NextResponse.json({ error: 'Missing bot token' }, { status: 400 });
     }
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('discord_bots')
         .update({
+          business_id: businessId || null,
           bot_token: encryptedToken,
           client_id: clientId || botInfo.id,
           guild_id: guildId || null,
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
 
     await supabase.from('discord_bots').insert({
       user_id: user.id,
+      business_id: businessId || null,
       bot_token: encryptedToken,
       client_id: clientId || botInfo.id,
       guild_id: guildId || null,

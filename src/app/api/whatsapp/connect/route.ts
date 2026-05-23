@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { phoneNumberId, phoneNumber, businessName, wabaId, accessToken } = await request.json();
+    const { phoneNumberId, phoneNumber, businessName, wabaId, accessToken, businessId } = await request.json();
 
     if (!phoneNumberId || !phoneNumber || !accessToken || !wabaId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('whatsapp_accounts')
         .update({
+          business_id: businessId || null,
           phone_number: phoneNumber,
           business_name: businessName || null,
           waba_id: wabaId || null,
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
     } else {
       await supabase.from('whatsapp_accounts').insert({
         user_id: user.id,
+        business_id: businessId || null,
         phone_number_id: phoneNumberId,
         phone_number: phoneNumber,
         business_name: businessName || null,

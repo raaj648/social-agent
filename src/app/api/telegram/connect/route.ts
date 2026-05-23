@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { botToken } = await request.json();
+    const { botToken, businessId } = await request.json();
     if (!botToken) {
       return NextResponse.json({ error: 'Missing bot token' }, { status: 400 });
     }
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('telegram_bots')
         .update({
+          business_id: businessId || null,
           bot_token: encryptedToken,
           bot_username: botInfo.username || null,
         })
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     await supabase.from('telegram_bots').insert({
       user_id: user.id,
+      business_id: businessId || null,
       bot_token: encryptedToken,
       bot_username: botInfo.username || null,
       webhook_url: webhookUrl,
