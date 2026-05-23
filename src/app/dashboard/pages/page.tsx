@@ -227,7 +227,7 @@ async function handleFacebookConnect() {
         toast.error('Meta App ID not configured');
         return;
     }
-    const fbUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${encodeURIComponent(state)}&scope=pages_show_list,pages_messaging,pages_manage_metadata,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
+    const fbUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${origin}/api/auth/callback/pages&response_type=code&state=${encodeURIComponent(state)}&scope=pages_show_list,pages_messaging,pages_manage_metadata,instagram_manage_messages,business_management,instagram_basic,pages_read_engagement,whatsapp_business_messaging`;
 
     const popup = window.open(fbUrl, 'fb-connect', 'width=600,height=700');
     if (!popup) {
