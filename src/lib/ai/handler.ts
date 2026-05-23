@@ -107,14 +107,18 @@ export async function handleAIResponse(
       return;
     }
 
-    // Fetch active AI provider and master prompt
+    // Fetch active AI provider and master prompt / reasoning settings
     let providerConfig: { baseUrl: string; apiKey: string } | undefined;
     let activeModel = settings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
+    let reasoningEnabled = true;
+    let reasoningSuppressionPrompt = '';
 
-    const [{ data: activeProvider }, { data: platformCfg }] = await Promise.all([
+    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }] = await Promise.all([
       supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
     ]);
 
     if (activeProvider) {
@@ -129,6 +133,8 @@ export async function handleAIResponse(
       }
     }
     masterPrompt = platformCfg?.value as string || null;
+    reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
+    reasoningSuppressionPrompt = (reasoningPromptCfg?.value as string) || '';
 
     // Look up business_id from platform account for multi-business scoping
     let businessId: string | null = null;
@@ -215,7 +221,10 @@ export async function handleAIResponse(
     }
 
     // Build system prompt
-    const systemPrompt = buildSystemPrompt(businessInfo, filteredKB, settings, masterPrompt) + `\n\n## Order Collection\n${orderInstruction}`;
+    let systemPrompt = buildSystemPrompt(businessInfo, filteredKB, settings, masterPrompt) + `\n\n## Order Collection\n${orderInstruction}`;
+    if (!reasoningEnabled && reasoningSuppressionPrompt) {
+      systemPrompt += `\n\n## Reasoning Suppression\n${reasoningSuppressionPrompt}`;
+    }
 
     // Build conversation history
     const conversationHistory = buildConversationContext(
@@ -296,7 +305,7 @@ export async function handleAIResponse(
       temperature: settings.temperature || 0.7,
       max_tokens: settings.max_tokens || 500,
       tools,
-    }, providerConfig);
+    }, providerConfig, !reasoningEnabled);
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -380,7 +389,7 @@ export async function handleAIResponse(
         messages: followUpMessages,
         temperature: settings.temperature || 0.7,
         max_tokens: settings.max_tokens || 500,
-      }, providerConfig);
+      }, providerConfig, !reasoningEnabled);
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {

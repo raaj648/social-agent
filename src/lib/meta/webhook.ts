@@ -57,7 +57,7 @@ async function findOrCreateConversation(
     .eq('user_id', userId)
     .eq('sender_id', senderId)
     .eq('platform', platform)
-    .single();
+    .maybeSingle();
 
   if (conversation) {
     await supabase
@@ -251,7 +251,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       .eq('user_id', channel.user_id)
       .is('page_id', null)
       .is('instagram_id', null)
-      .single();
+      .maybeSingle();
     aiSettings = settings;
   }
 
@@ -359,8 +359,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         content: greeting,
         sent_via_ai: true,
       });
-      // After sending the greeting, return to avoid also triggering a full AI reply
-      return;
     }
   }
 
@@ -378,14 +376,18 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   }
   console.log(`[webhook] Credit deducted for user ${channel.user_id}, proceeding to AI call`);
 
-  // Fetch active AI provider (owner-configured) and master prompt
+  // Fetch active AI provider (owner-configured) and master prompt / reasoning settings
   let providerConfig: { baseUrl: string; apiKey: string } | undefined;
   let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
   let masterPrompt: string | null = null;
+  let reasoningEnabled = true;
+  let reasoningSuppressionPrompt = '';
 
-  const [{ data: activeProvider }, { data: platformCfg }] = await Promise.all([
-    supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).single(),
+  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }] = await Promise.all([
+    supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+    supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+    supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
   ]);
 
   if (activeProvider) {
@@ -400,6 +402,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     }
   }
   masterPrompt = platformCfg?.value as string || null;
+  reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
+  reasoningSuppressionPrompt = (reasoningPromptCfg?.value as string) || '';
 
   // Fetch knowledge base using junction table
   const { data: kbLinks } = await supabase
@@ -441,7 +445,10 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     orderInstruction = `When the customer wants to place an order, ask for their Name, Phone, Address, and Product details. Once they provide ALL four pieces of information, call the extract_order_details tool to save the order.`;
   }
 
-  const systemPrompt = buildSystemPrompt(businessInfo, filteredKB, aiSettings, masterPrompt) + `\n\n## Order Collection\n${orderInstruction}`;
+  let systemPrompt = buildSystemPrompt(businessInfo, filteredKB, aiSettings, masterPrompt) + `\n\n## Order Collection\n${orderInstruction}`;
+  if (!reasoningEnabled && reasoningSuppressionPrompt) {
+    systemPrompt += `\n\n## Reasoning Suppression\n${reasoningSuppressionPrompt}`;
+  }
 
   const conversationHistory = buildConversationContext(
     (recentMessages || []).reverse(),
@@ -523,7 +530,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       temperature: aiSettings.temperature || 0.7,
       max_tokens: aiSettings.max_tokens || 500,
       tools,
-    }, providerConfig);
+    }, providerConfig, !reasoningEnabled);
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];

@@ -38,6 +38,10 @@ export default function OwnerProviders() {
 
   const [defaultFreeCredits, setDefaultFreeCredits] = useState('50');
   const [defaultCreditsExpiryDays, setDefaultCreditsExpiryDays] = useState('30');
+
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
+  const [reasoningSuppressionPrompt, setReasoningSuppressionPrompt] = useState('');
+  const [savingReasoning, setSavingReasoning] = useState(false);
   const [savingAiDefaults, setSavingAiDefaults] = useState(false);
 
   const [testProviderId, setTestProviderId] = useState('');
@@ -70,6 +74,8 @@ export default function OwnerProviders() {
     setMasterPrompt(settingsData.master_prompt || '');
     if (settingsData.default_free_credits !== undefined) setDefaultFreeCredits(String(settingsData.default_free_credits));
     if (settingsData.default_credits_expiry_days !== undefined) setDefaultCreditsExpiryDays(String(settingsData.default_credits_expiry_days));
+    if (settingsData.reasoning_enabled !== undefined) setReasoningEnabled(Boolean(settingsData.reasoning_enabled));
+    if (settingsData.reasoning_suppression_prompt !== undefined) setReasoningSuppressionPrompt(String(settingsData.reasoning_suppression_prompt));
   }
 
   function openAdd() {
@@ -127,6 +133,30 @@ export default function OwnerProviders() {
       }
     } catch (e: any) {
       setStatus({ type: 'error', text: e.message });
+    }
+  }
+
+  async function handleSaveReasoning() {
+    setSavingReasoning(true);
+    try {
+      const res = await fetch('/api/admin/owner/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reasoning_enabled: reasoningEnabled,
+          reasoning_suppression_prompt: reasoningSuppressionPrompt,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus({ type: 'success', text: 'Reasoning settings saved' });
+      } else {
+        setStatus({ type: 'error', text: data.error || 'Failed to save' });
+      }
+    } catch (e: any) {
+      setStatus({ type: 'error', text: e.message });
+    } finally {
+      setSavingReasoning(false);
     }
   }
 
@@ -373,6 +403,55 @@ export default function OwnerProviders() {
         {masterPromptDirty && (
           <p className="mt-2 text-xs text-amber-400/70">Unsaved changes</p>
         )}
+      </div>
+
+      {/* AI Reasoning */}
+      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+              <Brain className="h-5 w-5 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">AI Reasoning</h3>
+              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is shown in responses</p>
+            </div>
+          </div>
+          <button
+            onClick={handleSaveReasoning}
+            disabled={savingReasoning}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-purple-500 hover:to-pink-500 disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" /> {savingReasoning ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+        <div className="space-y-4">
+          <label className="flex items-center gap-3 rounded-xl border border-white/10 p-4 cursor-pointer hover:bg-white/5 transition-colors">
+            <input
+              type="checkbox"
+              checked={reasoningEnabled}
+              onChange={(e) => setReasoningEnabled(e.target.checked)}
+              className="h-5 w-5 rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">Enable AI reasoning output</span>
+              <p className="text-xs text-white/30 mt-0.5">When disabled, chain-of-thought reasoning is suppressed and a custom suppression prompt is injected into the system prompt</p>
+            </div>
+          </label>
+          <div>
+            <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
+              <Brain className="h-3 w-3 text-purple-400" /> Reasoning Suppression Prompt
+            </label>
+            <textarea
+              value={reasoningSuppressionPrompt}
+              onChange={(e) => setReasoningSuppressionPrompt(e.target.value)}
+              placeholder="Enter instructions that tell the AI to suppress chain-of-thought reasoning..."
+              rows={4}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+            />
+            <p className="text-xs text-white/30 mt-1">This prompt is appended to the system prompt when reasoning is disabled</p>
+          </div>
+        </div>
       </div>
 
       {/* Test AI */}

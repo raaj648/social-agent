@@ -65,13 +65,34 @@ export async function POST(request: NextRequest) {
         : masterPrompt;
     }
 
+    // Fetch reasoning settings
+    const { data: reasoningCfg } = await supabase
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'reasoning_enabled')
+      .maybeSingle();
+    const { data: reasoningPromptCfg } = await supabase
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'reasoning_suppression_prompt')
+      .maybeSingle();
+    const reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
+    const reasoningSuppressionPrompt = (reasoningPromptCfg?.value as string) || '';
+
+    if (!reasoningEnabled && reasoningSuppressionPrompt) {
+      effectiveSystemPrompt = effectiveSystemPrompt
+        ? `${effectiveSystemPrompt}\n\n## Reasoning Suppression\n${reasoningSuppressionPrompt}`
+        : `## Reasoning Suppression\n${reasoningSuppressionPrompt}`;
+    }
+
     const chatMessages = effectiveSystemPrompt
       ? [{ role: 'system', content: effectiveSystemPrompt }, ...messages]
       : messages;
 
     const response = await createCompletion(
       { model, messages: chatMessages },
-      { baseUrl, apiKey }
+      { baseUrl, apiKey },
+      !reasoningEnabled
     );
 
     const timeMs = Date.now() - start;

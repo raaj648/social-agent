@@ -17,13 +17,17 @@ export async function GET() {
 
     const supabase = await createAdminClient();
 
-    const [configRes, settingsRes] = await Promise.all([
+    const [configRes, reasoningEnabledRes, reasoningPromptRes, settingsRes] = await Promise.all([
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
       supabase.from('platform_settings').select('key, value'),
     ]);
 
     const result: Record<string, unknown> = {
       master_prompt: configRes.data?.value as string || null,
+      reasoning_enabled: reasoningEnabledRes.data?.value === true || reasoningEnabledRes.data?.value === 'true' ? true : false,
+      reasoning_suppression_prompt: reasoningPromptRes.data?.value as string || '',
     };
 
     const settings = settingsRes.data || [];
@@ -55,6 +59,20 @@ export async function PUT(request: NextRequest) {
       const { error } = await supabase
         .from('platform_settings')
         .upsert({ key: 'master_prompt', value: body.master_prompt || '' }, { onConflict: 'key' });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (body.reasoning_enabled !== undefined) {
+      const { error } = await supabase
+        .from('platform_settings')
+        .upsert({ key: 'reasoning_enabled', value: Boolean(body.reasoning_enabled) }, { onConflict: 'key' });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (body.reasoning_suppression_prompt !== undefined) {
+      const { error } = await supabase
+        .from('platform_settings')
+        .upsert({ key: 'reasoning_suppression_prompt', value: String(body.reasoning_suppression_prompt) }, { onConflict: 'key' });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

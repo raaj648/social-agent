@@ -58,11 +58,15 @@ export async function POST(request: NextRequest) {
     let providerConfig: { baseUrl: string; apiKey: string } | undefined;
     let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
+    let reasoningEnabled = true;
+    let reasoningSuppressionPrompt = '';
 
-    const [providerRes, configRes] = await Promise.all([
-      adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).single(),
+    const [providerRes, configRes, reasoningCfg, reasoningPromptCfg] = await Promise.all([
+      adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
-    ]);
+      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
+    ]) as any;
 
     if (!providerRes.error && providerRes.data) {
       try {
@@ -77,6 +81,8 @@ export async function POST(request: NextRequest) {
     }
 
     masterPrompt = configRes.data?.value as string || null;
+    reasoningEnabled = reasoningCfg?.data?.value === true || reasoningCfg?.data?.value === 'true';
+    reasoningSuppressionPrompt = (reasoningPromptCfg?.data?.value as string) || '';
 
     // Fetch knowledge base using junction table (platform-scoped)
     let filteredKB: Array<{ category: string; title: string; content: string }> = [];
@@ -128,8 +134,11 @@ export async function POST(request: NextRequest) {
       orderInstruction = `When the customer wants to place an order, ask for their Name, Phone, Address, and Product details. Once they provide ALL four pieces of information, call the extract_order_details tool to save the order.`;
     }
 
-    const systemPrompt = buildSystemPrompt(businessInfo, filteredKB, aiSettings, masterPrompt)
+    let systemPrompt = buildSystemPrompt(businessInfo, filteredKB, aiSettings, masterPrompt)
       + (orderInstruction ? `\n\n## Order Collection\n${orderInstruction}` : '');
+    if (!reasoningEnabled && reasoningSuppressionPrompt) {
+      systemPrompt += `\n\n## Reasoning Suppression\n${reasoningSuppressionPrompt}`;
+    }
 
     const baseTools: Array<{
       type: 'function';
@@ -183,7 +192,7 @@ export async function POST(request: NextRequest) {
       temperature: aiSettings.temperature || 0.7,
       max_tokens: aiSettings.max_tokens || 500,
       tools,
-    }, providerConfig);
+    }, providerConfig, !reasoningEnabled);
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -237,7 +246,7 @@ export async function POST(request: NextRequest) {
           ],
           temperature: aiSettings.temperature || 0.7,
           max_tokens: aiSettings.max_tokens || 500,
-        }, providerConfig);
+        }, providerConfig, !reasoningEnabled);
 
         finalReply = followUp.choices?.[0]?.message?.content || 'No response generated.';
       } else if (toolCall.function.name === 'extract_order_details') {

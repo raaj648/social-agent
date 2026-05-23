@@ -37,7 +37,8 @@ const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export async function createCompletion(
   params: CompletionParams,
-  providerConfig?: ProviderConfig
+  providerConfig?: ProviderConfig,
+  suppressReasoning?: boolean
 ): Promise<OpenRouterResponse> {
   const apiKey = providerConfig?.apiKey;
   if (!apiKey) throw new Error('AI_API_KEY is not set');
@@ -49,8 +50,12 @@ export async function createCompletion(
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
     max_tokens: params.max_tokens ?? 500,
-    include_reasoning: false,
   };
+
+  if (suppressReasoning) {
+    body.include_reasoning = false;
+    body.transforms = ['remove-reasoning'];
+  }
 
   if (params.tools && params.tools.length > 0) {
     body.tools = params.tools;
@@ -76,12 +81,13 @@ export async function createCompletion(
   const data: OpenRouterResponse = await res.json();
 
   // Strip reasoning patterns from content as a safety net
-  if (data.choices) {
+  if (data.choices && suppressReasoning) {
     for (const choice of data.choices) {
       if (choice?.message?.content) {
         choice.message.content = choice.message.content
           .replace(/^<thinking>[\s\S]*?<\/thinking>\s*/i, '')
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+          .replace(/^(?:Okay|Let me|First|I think|I need to|I'll start).*?\n/gi, '');
       }
     }
   }
