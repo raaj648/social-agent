@@ -20,7 +20,18 @@ interface ConnectedPage {
   page_category: string | null;
   subscribed: boolean;
   business_id: string | null;
-  instagram?: { id: string; username: string; name: string };
+}
+
+interface InstagramAccount {
+  id: string;
+  user_id: string;
+  page_id: string | null;
+  ig_account_id: string;
+  ig_username: string;
+  ig_name: string | null;
+  ig_profile_pic: string | null;
+  is_active: boolean;
+  business_id: string | null;
 }
 
 interface WhatsAppAccount {
@@ -54,6 +65,7 @@ function PagesPageInner() {
   usePageTitle('Connected Accounts');
   const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
   const [pages, setPages] = useState<ConnectedPage[]>([]);
+  const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
   const [whatsappAccounts, setWhatsappAccounts] = useState<WhatsAppAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -64,7 +76,7 @@ function PagesPageInner() {
   const [connectingWa, setConnectingWa] = useState(false);
   const [connectingWaFb, setConnectingWaFb] = useState(false);
   const [waError, setWaError] = useState('');
-  const [confirmDisconnect, setConfirmDisconnect] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord'; id: string } | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord' | 'instagram'; id: string } | null>(null);
   const [showAddPages, setShowAddPages] = useState(false);
   const [availablePages, setAvailablePages] = useState<Array<{ page_id: string; page_name: string; page_category: string | null; picture_url: string | null }>>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
@@ -84,6 +96,7 @@ function PagesPageInner() {
   const [showInstagramGuide, setShowInstagramGuide] = useState<string | null>(null);
   const [assigningBusiness, setAssigningBusiness] = useState<{ type: 'page' | 'whatsapp' | 'telegram' | 'discord' | 'instagram'; id: string } | null>(null);
   const fbSectionRef = useRef<HTMLDivElement>(null);
+  const igSectionRef = useRef<HTMLDivElement>(null);
   const waSectionRef = useRef<HTMLDivElement>(null);
   const tgSectionRef = useRef<HTMLDivElement>(null);
   const dcSectionRef = useRef<HTMLDivElement>(null);
@@ -118,9 +131,8 @@ function PagesPageInner() {
       dcQuery,
     ]);
 
-    setPages((pagesRes.data || []).map((p) => ({
-      ...p, instagram: (igRes.data || []).find((ig) => ig.page_id === p.id),
-    })));
+    setPages(pagesRes.data || []);
+    setInstagramAccounts(igRes.data || []);
     setWhatsappAccounts(waRes.data || []);
     setTelegramBots(tgRes.data || []);
     setDiscordBots(dcRes.data || []);
@@ -418,6 +430,17 @@ async function handleFacebookConnect() {
     toast.success('Page disconnected');
   }
 
+  async function handleDisconnectInstagram(id: string) {
+    setConfirmDisconnect(null);
+    const { error } = await supabase.from('instagram_accounts').delete().eq('id', id);
+    if (error) {
+      toast.error('Failed to disconnect Instagram');
+      return;
+    }
+    setInstagramAccounts((prev) => prev.filter((ig) => ig.id !== id));
+    toast.success('Instagram account disconnected');
+  }
+
   async function handleDisconnectWhatsApp(id: string) {
     setConfirmDisconnect(null);
     setDisconnectingWa(id);
@@ -467,7 +490,7 @@ async function handleFacebookConnect() {
 
   const platformCounts = {
     facebook: pages.length,
-    instagram: pages.filter(p => p.instagram).length,
+    instagram: instagramAccounts.length,
     whatsapp: whatsappAccounts.length,
     telegram: telegramBots.length,
     discord: discordBots.length,
@@ -513,7 +536,7 @@ async function handleFacebookConnect() {
             </div>
           </div>
         </button>
-        <button onClick={() => scrollToSection(fbSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.instagram > 0 ? 'border-pink-200 bg-pink-50/50 dark:border-pink-800 dark:bg-pink-950/20' : 'border-muted'}`}>
+        <button onClick={() => scrollToSection(igSectionRef)} className={`rounded-xl border p-4 text-left transition-all hover:shadow-md ${platformCounts.instagram > 0 ? 'border-pink-200 bg-pink-50/50 dark:border-pink-800 dark:bg-pink-950/20' : 'border-muted'}`}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-pink-100 dark:bg-pink-900/50">
               <Instagram className={`h-5 w-5 ${platformCounts.instagram > 0 ? 'text-pink-600' : 'text-muted-foreground'}`} />
@@ -593,18 +616,19 @@ async function handleFacebookConnect() {
               <Card key={page.id} className="card-hover overflow-hidden">
                 <div className="h-1.5 bg-gradient-to-r from-blue-500 to-purple-500" />
                 <CardHeader className="flex flex-row items-center gap-4">
-                  {page.picture_url ? (
-                    <img
-                      src={page.picture_url}
-                      alt={page.page_name}
-                      className="h-12 w-12 shrink-0 rounded-xl object-cover shadow"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow">
+                  <div className="relative h-12 w-12 shrink-0">
+                    {page.picture_url ? (
+                      <img
+                        src={page.picture_url}
+                        alt={page.page_name}
+                        className="h-12 w-12 rounded-xl object-cover shadow"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.querySelector('.fallback')?.classList.remove('hidden'); }}
+                      />
+                    ) : null}
+                    <div className={`fallback absolute inset-0 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow ${page.picture_url ? 'hidden' : ''}`}>
                       <Facebook className="h-6 w-6" />
                     </div>
-                  )}
+                  </div>
                   <div className="min-w-0">
                     <CardTitle className="text-lg truncate">{page.page_name}</CardTitle>
                     <p className="text-xs text-muted-foreground">{page.page_category || 'Page'}</p>
@@ -617,13 +641,6 @@ async function handleFacebookConnect() {
                       <span>{page.subscribed ? 'Webhook active' : 'Webhook not subscribed'}</span>
                     </div>
 
-                    {page.instagram && (
-                      <div className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-pink-50 to-rose-50 p-3 text-sm">
-                        <Instagram className="h-4 w-4 shrink-0 text-pink-600" />
-                        <span className="font-medium">@{page.instagram.username}</span>
-                        <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-green-600 shrink-0" />
-                      </div>
-                    )}
                     {!page.subscribed && (
                       <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-sm border border-amber-200 dark:border-amber-800">
                         <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
@@ -635,22 +652,6 @@ async function handleFacebookConnect() {
                     )}
 
                     <div className="flex gap-2 pt-1">
-                      {!page.instagram ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => handleLinkInstagram(page.page_id)}
-                          disabled={linkingInstagram === page.page_id}
-                        >
-                          {linkingInstagram === page.page_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Instagram className="h-4 w-4" />
-                          )}
-                          {linkingInstagram === page.page_id ? 'Linking...' : 'Link Instagram'}
-                        </Button>
-                      ) : null}
                       {!activeBusinessId && businesses.length > 0 && !page.business_id && (
                         <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'page', id: page.id })}>
                           <Building2 className="h-4 w-4" /> Assign
@@ -664,6 +665,89 @@ async function handleFacebookConnect() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Instagram Accounts */}
+      <div ref={igSectionRef}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Instagram className="h-5 w-5 text-pink-600" />
+            Instagram
+          </h2>
+        </div>
+        {instagramAccounts.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-4 py-12">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-100">
+                <Instagram className="h-8 w-8 text-pink-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium">No Instagram accounts connected</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Instagram accounts are automatically detected when you connect a Facebook Page that has a linked Instagram Business account.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {instagramAccounts.map((ig) => {
+              const linkedPage = pages.find((p) => p.id === ig.page_id);
+              return (
+                <Card key={ig.id} className="card-hover overflow-hidden">
+                  <div className="h-1.5 bg-gradient-to-r from-pink-500 to-rose-500" />
+                  <CardHeader className="flex flex-row items-center gap-4">
+                    {ig.ig_profile_pic ? (
+                      <div className="relative h-12 w-12 shrink-0">
+                        <img
+                          src={ig.ig_profile_pic}
+                          alt={ig.ig_username}
+                          className="h-12 w-12 rounded-xl object-cover shadow"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.querySelector('.fallback')?.classList.remove('hidden'); }}
+                        />
+                        <div className="fallback absolute inset-0 hidden items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow">
+                          <Instagram className="h-6 w-6" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow">
+                        <Instagram className="h-6 w-6" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg truncate">@{ig.ig_username}</CardTitle>
+                      <p className="text-xs text-muted-foreground">{ig.ig_name || 'Instagram Account'}</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className={`h-2 w-2 rounded-full ${ig.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        <span>{ig.is_active ? 'Active' : 'Inactive'}</span>
+                      </div>
+                      {linkedPage && (
+                        <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-sm border border-blue-100 dark:border-blue-800">
+                          <Facebook className="h-4 w-4 shrink-0 text-blue-600" />
+                          <span className="text-muted-foreground">Connected to: <strong>{linkedPage.page_name}</strong></span>
+                        </div>
+                      )}
+                      <div className="flex gap-2 pt-1">
+                        {!activeBusinessId && businesses.length > 0 && !ig.business_id && (
+                          <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'instagram', id: ig.id })}>
+                            <Building2 className="h-4 w-4" /> Assign
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" className="gap-2 text-destructive hover:text-destructive" onClick={() => setConfirmDisconnect({ type: 'instagram', id: ig.id })}>
+                          <Trash2 className="h-4 w-4" /> Disconnect
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1331,6 +1415,7 @@ async function handleFacebookConnect() {
         onClose={() => setConfirmDisconnect(null)}
         onConfirm={() => {
           if (confirmDisconnect?.type === 'page') handleDisconnectPage(confirmDisconnect.id);
+          if (confirmDisconnect?.type === 'instagram') handleDisconnectInstagram(confirmDisconnect.id);
           if (confirmDisconnect?.type === 'whatsapp') handleDisconnectWhatsApp(confirmDisconnect.id);
         }}
         title="Disconnect Account"

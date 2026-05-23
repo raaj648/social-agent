@@ -106,17 +106,17 @@ export async function getMessengerUserProfile(
 export async function getInstagramUserProfile(
   senderId: string,
   igAccessToken: string
-): Promise<{ name: string; profile_pic: string } | null> {
+): Promise<{ name: string; profile_picture_url: string } | null> {
   try {
     const url = new URL(`${META_GRAPH_URL}/${senderId}`);
     url.searchParams.set('access_token', igAccessToken);
-    url.searchParams.set('fields', 'name,profile_pic');
+    url.searchParams.set('fields', 'name,profile_picture_url');
     const res = await fetch(url.toString());
     if (!res.ok) return null;
     const data = await res.json();
     return {
       name: data.name || senderId,
-      profile_pic: data.profile_pic || '',
+      profile_picture_url: data.profile_picture_url || '',
     };
   } catch {
     return null;

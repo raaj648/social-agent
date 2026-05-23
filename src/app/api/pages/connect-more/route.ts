@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/crypto';
-import { subscribePageToWebhook } from '@/lib/meta/graph';
-import { getInstagramBusinessAccount } from '@/lib/meta/graph';
+import { subscribePageToWebhook, getInstagramBusinessAccount, getUserPages } from '@/lib/meta/graph';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +11,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pages, businessId }: { pages: Array<{ page_id: string; page_name: string; page_category?: string; picture_url?: string; access_token: string }>; businessId?: string | null } = await request.json();
+    const { pages, businessId }: { pages: Array<{ page_id: string; page_name: string; page_category?: string; picture_url?: string }>; businessId?: string | null } = await request.json();
     if (!pages || pages.length === 0) {
       return NextResponse.json({ error: 'No pages provided' }, { status: 400 });
+    }
+
+    // Fetch fresh access tokens from Facebook using the saved user token
+    const { data: userData } = await supabase.from('users').select('fb_user_access_token').eq('id', user.id).maybeSingle();
+    if (!userData?.fb_user_access_token) {
+      return NextResponse.json({ error: 'No Facebook token found. Please connect via Facebook first.' }, { status: 400 });
+    }
+
+    const userAccessToken = decrypt(userData.fb_user_access_token);
+    const fbPages = await getUserPages(userAccessToken);
+    const tokenMap = new Map<string, string>();
+    for (const fp of fbPages) {
+      if (fp.access_token) tokenMap.set(fp.id, fp.access_token);
     }
 
     const results: Array<{ page_id: string; page_name: string; status: string }> = [];
@@ -23,11 +35,12 @@ export async function POST(request: NextRequest) {
 
     for (const page of pages) {
       try {
-        if (!page.access_token) {
+        const accessToken = tokenMap.get(page.page_id);
+        if (!accessToken) {
           errors++;
           continue;
         }
-        const encryptedToken = encrypt(page.access_token);
+        const encryptedToken = encrypt(accessToken);
 
         const { data: existing } = await supabase
           .from('connected_pages')
@@ -72,7 +85,7 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
           if (saved) {
-            const subscribed = await subscribePageToWebhook(page.page_id, page.access_token);
+            const subscribed = await subscribePageToWebhook(page.page_id, accessToken);
             if (subscribed) {
               await supabase
                 .from('connected_pages')
@@ -82,7 +95,7 @@ export async function POST(request: NextRequest) {
 
             // Auto-detect Instagram Business Account
             try {
-              const igAccount = await getInstagramBusinessAccount(page.page_id, page.access_token);
+              const igAccount = await getInstagramBusinessAccount(page.page_id, accessToken);
               if (igAccount) {
                 const { data: existingIg } = await supabase
                   .from('instagram_accounts')

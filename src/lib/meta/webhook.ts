@@ -186,7 +186,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         const profile = await getInstagramUserProfile(senderId, token);
         if (profile) {
           profileName = profile.name;
-          profilePic = profile.profile_pic;
+          profilePic = profile.profile_picture_url;
         }
       }
       if (profileName || profilePic) {
