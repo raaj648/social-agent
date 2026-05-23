@@ -53,8 +53,10 @@ export async function createCompletion(
   };
 
   if (suppressReasoning) {
-    body.include_reasoning = false;
-    body.transforms = ['remove-reasoning'];
+    if (baseUrl === DEFAULT_BASE_URL || baseUrl.includes('openrouter.ai')) {
+      body.include_reasoning = false;
+      body.transforms = ['remove-reasoning'];
+    }
   }
 
   if (params.tools && params.tools.length > 0) {
