@@ -156,17 +156,24 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
   }
 
   // Handle AI response
-  await handleAIResponse(
-    matchedBot.user_id,
-    matchedBot.user_id,
-    null,
-    null,
-    null,
-    conversationId,
-    senderId,
-    messageText,
-    botToken,
-    'telegram',
-    aiSettings as AISettings
-  );
+  try {
+    await handleAIResponse(
+      matchedBot.user_id,
+      matchedBot.user_id,
+      channelDbId,
+      null,
+      null,
+      conversationId,
+      senderId,
+      messageText,
+      botToken,
+      'telegram',
+      aiSettings as AISettings
+    );
+  } catch (error) {
+    console.error('Telegram AI handler error:', error);
+    try {
+      await sendTelegramMessage(botToken, chatId, "Sorry, I'm having trouble processing your request. Please try again later.");
+    } catch {}
+  }
 }

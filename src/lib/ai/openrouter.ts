@@ -49,6 +49,7 @@ export async function createCompletion(
     messages: params.messages,
     temperature: params.temperature ?? 0.7,
     max_tokens: params.max_tokens ?? 500,
+    include_reasoning: false,
   };
 
   if (params.tools && params.tools.length > 0) {
@@ -72,7 +73,20 @@ export async function createCompletion(
     throw new Error(`AI API error (${res.status}): ${errorText}`);
   }
 
-  return res.json();
+  const data: OpenRouterResponse = await res.json();
+
+  // Strip reasoning patterns from content as a safety net
+  if (data.choices) {
+    for (const choice of data.choices) {
+      if (choice?.message?.content) {
+        choice.message.content = choice.message.content
+          .replace(/^<thinking>[\s\S]*?<\/thinking>\s*/i, '')
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+      }
+    }
+  }
+
+  return data;
 }
 
 export async function createFallbackResponse(): Promise<string> {
