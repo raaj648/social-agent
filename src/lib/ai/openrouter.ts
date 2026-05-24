@@ -1,4 +1,5 @@
 import { OpenRouterResponse } from '@/types';
+import { type ProviderType, detectProviderType } from '@/lib/ai/provider';
 
 interface ToolDef {
   type: 'function';
@@ -28,12 +29,41 @@ interface CompletionParams {
   tools?: ToolDef[];
 }
 
-interface ProviderConfig {
+export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
+  providerType?: ProviderType;
 }
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
+
+function addReasoningBody(
+  body: Record<string, unknown>,
+  providerType: ProviderType,
+  suppressReasoning: boolean,
+  reasoningMaxTokens: number
+): void {
+  switch (providerType) {
+    case 'openrouter':
+      body.include_reasoning = false;
+      body.transforms = ['remove-reasoning'];
+      if (suppressReasoning) {
+        body.reasoning = { max_tokens: 0 };
+      } else {
+        body.reasoning = { max_tokens: reasoningMaxTokens };
+      }
+      break;
+    case 'deepseek':
+      if (suppressReasoning) {
+        body.thinking = 'disabled';
+      } else {
+        body.thinking = reasoningMaxTokens > 1024 ? 'max' : 'high';
+      }
+      break;
+    case 'generic':
+      break;
+  }
+}
 
 export async function createCompletion(
   params: CompletionParams,
@@ -45,6 +75,7 @@ export async function createCompletion(
   if (!apiKey) throw new Error('AI_API_KEY is not set');
 
   const baseUrl = providerConfig?.baseUrl || DEFAULT_BASE_URL;
+  const providerType = detectProviderType(baseUrl, providerConfig?.providerType);
 
   const body: Record<string, unknown> = {
     model: params.model,
@@ -53,15 +84,7 @@ export async function createCompletion(
     max_tokens: params.max_tokens ?? 500,
   };
 
-  if (baseUrl === DEFAULT_BASE_URL || baseUrl.includes('openrouter.ai')) {
-    body.include_reasoning = false;
-    body.transforms = ['remove-reasoning'];
-    if (suppressReasoning) {
-      body.reasoning = { max_tokens: 0 };
-    } else {
-      body.reasoning = { max_tokens: reasoningMaxTokens ?? 512 };
-    }
-  }
+  addReasoningBody(body, providerType, suppressReasoning ?? false, reasoningMaxTokens ?? 512);
 
   if (params.tools && params.tools.length > 0) {
     body.tools = params.tools;
@@ -89,6 +112,11 @@ export async function createCompletion(
   // Strip reasoning patterns from content as a safety net
   if (data.choices) {
     for (const choice of data.choices) {
+      // Remove provider-specific reasoning fields
+      if (choice.message) {
+        delete (choice.message as any).reasoning;
+        delete (choice.message as any).reasoning_content;
+      }
       if (choice?.message?.content) {
         choice.message.content = choice.message.content
           .replace(/^<thinking>[\s\S]*?<\/thinking>\s*/i, '')

@@ -15,12 +15,14 @@ interface Provider {
   base_url: string;
   api_key: string;
   default_model: string;
+  provider_type: string;
+  reasoning_max_tokens: number | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
 }
 
-const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', is_active: true };
+const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', is_active: true };
 
 export default function OwnerProviders() {
   const router = useRouter();
@@ -97,6 +99,8 @@ export default function OwnerProviders() {
       base_url: p.base_url,
       api_key: '',
       default_model: p.default_model,
+      provider_type: p.provider_type || 'generic',
+      reasoning_max_tokens: p.reasoning_max_tokens !== null && p.reasoning_max_tokens !== undefined ? String(p.reasoning_max_tokens) : '',
       is_active: p.is_active,
     });
     setShowModal(true);
@@ -656,6 +660,24 @@ export default function OwnerProviders() {
                       Inactive
                     </button>
                   </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-white/60">Provider Type</label>
+                  <select value={form.provider_type} onChange={(e) => setForm(f => ({ ...f, provider_type: e.target.value }))}
+                    className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50">
+                    <option value="generic">Generic (auto-detect)</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="deepseek">DeepSeek</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60">Reasoning Max Tokens</label>
+                  <input type="number" min={0} max={4096} step={64} value={form.reasoning_max_tokens}
+                    onChange={(e) => setForm(f => ({ ...f, reasoning_max_tokens: e.target.value }))}
+                    placeholder="Empty = use global default"
+                    className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
                 </div>
               </div>
 

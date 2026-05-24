@@ -1,7 +1,7 @@
 ﻿import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
 import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile, sendSenderAction, sendWhatsAppTypingAndRead } from '@/lib/meta/graph';
-import { createCompletion } from '@/lib/ai/openrouter';
+import { createCompletion, type ProviderConfig } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
 import type { AISettings } from '@/types';
@@ -397,7 +397,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   console.log(`[webhook] Credit deducted for user ${channel.user_id}, proceeding to AI call`);
 
   // Fetch active AI provider (owner-configured) and master prompt / reasoning settings
-  let providerConfig: { baseUrl: string; apiKey: string } | undefined;
+  let providerConfig: ProviderConfig | undefined;
   let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
   let masterPrompt: string | null = null;
   let reasoningEnabled = true;
@@ -421,6 +421,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       providerConfig = {
         baseUrl: activeProvider.base_url,
         apiKey: decrypt(activeProvider.api_key),
+        providerType: activeProvider.provider_type,
       };
       activeModel = activeProvider.default_model || activeModel;
     } catch {

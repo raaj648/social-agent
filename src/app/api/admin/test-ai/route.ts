@@ -26,10 +26,11 @@ export async function POST(request: NextRequest) {
     let apiKey: string;
     let baseUrl: string;
 
+    let providerType: string | undefined;
     if (providerId) {
       const { data: provider, error } = await supabase
         .from('ai_providers')
-        .select('api_key, base_url')
+        .select('api_key, base_url, provider_type')
         .eq('id', providerId)
         .single();
 
@@ -41,9 +42,11 @@ export async function POST(request: NextRequest) {
         apiKey = provider.api_key;
       }
       baseUrl = provider.base_url;
+      providerType = provider.provider_type;
     } else {
       apiKey = await getOpenRouterKey();
       baseUrl = 'https://openrouter.ai/api/v1';
+      providerType = 'openrouter';
     }
 
     if (!apiKey) {
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     const response = await createCompletion(
       { model, messages: chatMessages },
-      { baseUrl, apiKey },
+      { baseUrl, apiKey, providerType: providerType as any },
       !reasoningEnabled,
       reasoningMaxTokens
     );

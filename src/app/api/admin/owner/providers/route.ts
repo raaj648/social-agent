@@ -46,23 +46,29 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createAdminClient();
 
-    const { name, base_url, api_key, default_model, is_active, sort_order } = await request.json();
+    const { name, base_url, api_key, default_model, provider_type, reasoning_max_tokens, is_active, sort_order } = await request.json();
     if (!name || !base_url || !api_key) {
       return NextResponse.json({ error: 'name, base_url, and api_key are required' }, { status: 400 });
     }
 
     const encryptedKey = encrypt(api_key);
 
+    const insertData: Record<string, unknown> = {
+      name,
+      base_url,
+      api_key: encryptedKey,
+      default_model: default_model || 'gpt-4o-mini',
+      is_active: is_active !== undefined ? is_active : true,
+      sort_order: sort_order || 0,
+    };
+    if (provider_type) insertData.provider_type = provider_type;
+    if (reasoning_max_tokens !== undefined && reasoning_max_tokens !== '') {
+      insertData.reasoning_max_tokens = parseInt(reasoning_max_tokens) || null;
+    }
+
     const { data, error } = await supabase
       .from('ai_providers')
-      .insert({
-        name,
-        base_url,
-        api_key: encryptedKey,
-        default_model: default_model || 'gpt-4o-mini',
-        is_active: is_active !== undefined ? is_active : true,
-        sort_order: sort_order || 0,
-      })
+      .insert(insertData)
       .select()
       .single();
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { createCompletion } from '@/lib/ai/openrouter';
+import { createCompletion, type ProviderConfig } from '@/lib/ai/openrouter';
 import { buildSystemPrompt } from '@/lib/ai/prompts';
 import { decrypt } from '@/lib/crypto';
 
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       is_active: true,
     };
 
-    let providerConfig: { baseUrl: string; apiKey: string } | undefined;
+    let providerConfig: ProviderConfig | undefined;
     let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
     let reasoningEnabled = true;
@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
         providerConfig = {
           baseUrl: providerRes.data.base_url,
           apiKey: decrypt(providerRes.data.api_key),
+          providerType: providerRes.data.provider_type,
         };
         activeModel = providerRes.data.default_model || activeModel;
       } catch {

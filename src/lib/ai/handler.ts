@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendMessage, sendWhatsAppMessage } from '@/lib/meta/graph';
 import { sendTelegramMessage } from '@/lib/telegram/bot';
 import { sendDiscordMessage } from '@/lib/discord/bot';
-import { createCompletion, createFallbackResponse } from '@/lib/ai/openrouter';
+import { createCompletion, createFallbackResponse, type ProviderConfig } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
 import { decrypt } from '@/lib/crypto';
@@ -110,7 +110,7 @@ export async function handleAIResponse(
     }
 
     // Fetch active AI provider and master prompt / reasoning settings
-    let providerConfig: { baseUrl: string; apiKey: string } | undefined;
+    let providerConfig: ProviderConfig | undefined;
     let activeModel = settings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
     let reasoningEnabled = true;
@@ -134,6 +134,7 @@ export async function handleAIResponse(
         providerConfig = {
           baseUrl: activeProvider.base_url,
           apiKey: decrypt(activeProvider.api_key),
+          providerType: activeProvider.provider_type,
         };
         activeModel = activeProvider.default_model || activeModel;
       } catch {
