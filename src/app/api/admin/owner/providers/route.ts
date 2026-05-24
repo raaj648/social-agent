@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createAdminClient();
 
-    const { name, base_url, api_key, default_model, provider_type, reasoning_max_tokens, reasoning_strategy, is_active, sort_order } = await request.json();
+    const { name, base_url, api_key, default_model, provider_type, reasoning_max_tokens, reasoning_strategy, reasoning_media_max_tokens, is_active, sort_order } = await request.json();
     if (!name || !base_url || !api_key) {
       return NextResponse.json({ error: 'name, base_url, and api_key are required' }, { status: 400 });
     }
@@ -68,6 +68,10 @@ export async function POST(request: NextRequest) {
     }
     if (reasoning_strategy !== undefined) {
       insertData.reasoning_strategy = reasoning_strategy || null;
+    }
+    if (reasoning_media_max_tokens !== undefined && reasoning_media_max_tokens !== '') {
+      const parsed = parseInt(reasoning_media_max_tokens);
+      insertData.reasoning_media_max_tokens = !isNaN(parsed) ? parsed : null;
     }
 
     const { data, error } = await supabase

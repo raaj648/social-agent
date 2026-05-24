@@ -12,6 +12,11 @@ interface TelegramUpdate {
     chat: { id: number; type: string; title?: string; first_name?: string; last_name?: string; username?: string };
     text?: string;
     date: number;
+    photo?: unknown[];
+    voice?: unknown;
+    video?: unknown;
+    document?: unknown;
+    audio?: unknown;
   };
 }
 
@@ -56,6 +61,7 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
   const supabase = await createAdminClient();
   const chatId = String(update.message.chat.id);
   const messageText = update.message.text;
+  const hasMedia = !!(update.message?.photo || update.message?.voice || update.message?.video || update.message?.document || update.message?.audio);
   const senderId = String(update.message.from?.id || chatId);
   const senderName = update.message.from?.first_name
     ? [update.message.from.first_name, update.message.from.last_name].filter(Boolean).join(' ')
@@ -247,7 +253,8 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
       messageText,
       botToken,
       'telegram',
-      aiSettings as AISettings
+      aiSettings as AISettings,
+      hasMedia
     );
   } catch (error) {
     console.error('Telegram AI handler error:', error);

@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
               platformMsgId: msgId,
               recipientId: event.recipient?.id || entry.id,
               timestamp: event.timestamp || Date.now(),
+              hasMedia: event.message?.attachments?.length > 0,
             });
           }
         }
@@ -87,17 +88,19 @@ export async function POST(request: NextRequest) {
                 processedInBatch.add(msg.id);
               }
 
-              const textBody = msg.text?.body || msg.text_body;
-              if (!textBody || !msg.from) continue;
+              const textBody = msg.text?.body || msg.text_body || '';
+              if (!textBody && !msg.from) continue;
+              const isMedia = !!(msg.image || msg.video || msg.audio || msg.voice || msg.document);
 
               await processWebhookMessage({
                 platform: 'whatsapp',
                 senderId: msg.from,
-                messageText: textBody,
+                messageText: textBody || '[attachment]',
                 platformMsgId: msg.id,
                 recipientId,
                 timestamp: msg.timestamp ? Number(msg.timestamp) * 1000 : Date.now(),
                 senderName,
+                hasMedia: isMedia,
               });
             }
           }

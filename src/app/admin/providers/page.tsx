@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Brain, Plus, RefreshCw, Trash2, Edit3, Save,
   CheckCircle, XCircle, Globe, Key, Cpu, Users, MessageSquare,
-  AlertCircle, Send, Loader2, Bot,
+  AlertCircle, Send, Loader2, Bot, Camera,
 } from 'lucide-react';
 
 interface Provider {
@@ -18,12 +18,13 @@ interface Provider {
   provider_type: string;
   reasoning_max_tokens: number | null;
   reasoning_strategy: string | null;
+  reasoning_media_max_tokens: number | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
 }
 
-const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', reasoning_strategy: '', is_active: true };
+const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', reasoning_strategy: '', reasoning_media_max_tokens: '', is_active: true };
 
 export default function OwnerProviders() {
   const router = useRouter();
@@ -98,6 +99,7 @@ export default function OwnerProviders() {
       provider_type: p.provider_type || 'generic',
       reasoning_max_tokens: p.reasoning_max_tokens !== null && p.reasoning_max_tokens !== undefined ? String(p.reasoning_max_tokens) : '',
       reasoning_strategy: p.reasoning_strategy || '',
+      reasoning_media_max_tokens: p.reasoning_media_max_tokens !== null && p.reasoning_media_max_tokens !== undefined ? String(p.reasoning_media_max_tokens) : '',
       is_active: p.is_active,
     });
     setShowModal(true);
@@ -624,6 +626,35 @@ export default function OwnerProviders() {
                 {form.provider_type === 'generic' && (
                   <div>
                     <p className="mt-2 text-xs text-white/30">Reasoning not supported for this provider type.</p>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {form.provider_type === 'openrouter' && (
+                  <div>
+                    <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                      <Camera className="h-3 w-3 text-violet-400" /> Media Reasoning Tokens
+                    </label>
+                    <input type="number" min={0} max={4096} step={64} value={form.reasoning_media_max_tokens}
+                      onChange={(e) => setForm(f => ({ ...f, reasoning_media_max_tokens: e.target.value }))}
+                      placeholder="0 = Off, empty = use normal setting"
+                      className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
+                    <p className="text-xs text-white/30 mt-1">Auto-enables reasoning when customer sends images/voice</p>
+                  </div>
+                )}
+                {form.provider_type === 'deepseek' && (
+                  <div>
+                    <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                      <Camera className="h-3 w-3 text-emerald-400" /> Media Thinking Mode
+                    </label>
+                    <select value={form.reasoning_media_max_tokens} onChange={(e) => setForm(f => ({ ...f, reasoning_media_max_tokens: e.target.value }))}
+                      className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50">
+                      <option value="">Same as normal</option>
+                      <option value="0">Off</option>
+                      <option value="1">High</option>
+                      <option value="2">Max</option>
+                    </select>
+                    <p className="text-xs text-white/30 mt-1">Thinking level when customer sends images/voice</p>
                   </div>
                 )}
               </div>

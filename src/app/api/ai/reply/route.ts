@@ -111,7 +111,8 @@ export async function POST(request: NextRequest) {
       messageText,
       accessToken,
       platform as 'messenger' | 'instagram' | 'whatsapp',
-      aiSettings
+      aiSettings,
+      false
     );
 
     return NextResponse.json({ success: true }, { status: 200 });

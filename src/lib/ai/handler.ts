@@ -19,7 +19,8 @@ export async function handleAIResponse(
   incomingMessage: string,
   accessToken: string,
   platform: 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord',
-  aiSettings: AISettings
+  aiSettings: AISettings,
+  hasMedia?: boolean
 ): Promise<void> {
   try {
     const supabase = await createAdminClient();
@@ -116,6 +117,7 @@ export async function handleAIResponse(
     let reasoningEnabled = true;
     let reasoningMaxTokens: number | undefined;
     let reasoningStrategy: string | undefined;
+    let reasoningMediaMaxTokens: number | undefined;
 
     const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }] = await Promise.all([
       supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
@@ -139,6 +141,7 @@ export async function handleAIResponse(
         activeModel = activeProvider.default_model || activeModel;
         reasoningMaxTokens = activeProvider.reasoning_max_tokens ?? undefined;
         reasoningStrategy = activeProvider.reasoning_strategy || undefined;
+        reasoningMediaMaxTokens = activeProvider.reasoning_media_max_tokens ?? undefined;
       } catch {
         console.warn('Failed to decrypt provider API key, falling back to default');
       }
@@ -317,6 +320,10 @@ export async function handleAIResponse(
       throw new Error('Unreachable');
     };
 
+    // Override reasoning when media is present (auto-enable for image/voice messages)
+    const effectiveSuppressReasoning = (hasMedia && reasoningMediaMaxTokens) ? false : !reasoningEnabled;
+    const effectiveReasoningMaxTokens = (hasMedia && reasoningMediaMaxTokens) ? reasoningMediaMaxTokens : reasoningMaxTokens;
+
     // Create completion
     const response = await withRetry(() => createCompletion({
       model: activeModel,
@@ -324,7 +331,7 @@ export async function handleAIResponse(
       temperature: settings.temperature ?? defaultTemperature,
       max_tokens: settings.max_tokens ?? defaultMaxTokens,
       tools,
-    }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
+    }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -408,7 +415,7 @@ export async function handleAIResponse(
         messages: followUpMessages,
         temperature: settings.temperature ?? defaultTemperature,
         max_tokens: settings.max_tokens ?? defaultMaxTokens,
-      }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
+      }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {

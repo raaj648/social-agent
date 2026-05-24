@@ -56,6 +56,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (body.reasoning_strategy !== undefined) {
       updates.reasoning_strategy = body.reasoning_strategy || null;
     }
+    if (body.reasoning_media_max_tokens !== undefined) {
+      if (body.reasoning_media_max_tokens !== '' && body.reasoning_media_max_tokens != null) {
+        const parsed = parseInt(body.reasoning_media_max_tokens);
+        updates.reasoning_media_max_tokens = !isNaN(parsed) ? parsed : null;
+      } else {
+        updates.reasoning_media_max_tokens = null;
+      }
+    }
     if (body.is_active !== undefined) updates.is_active = body.is_active;
 
     const { data, error } = await supabase

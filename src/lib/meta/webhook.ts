@@ -14,6 +14,7 @@ interface WebhookPayload {
   recipientId: string;
   timestamp: number;
   senderName?: string;
+  hasMedia?: boolean;
 }
 
 async function findChannel(supabase: any, platform: string, externalId: string) {
@@ -433,6 +434,11 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   masterPrompt = platformCfg?.value as string || null;
   reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
 
+  // Override reasoning when media is present (images/voice in customer messages)
+  const hasMedia = payload.hasMedia || false;
+  const effectiveSuppressReasoning = (hasMedia && activeProvider?.reasoning_media_max_tokens) ? false : !reasoningEnabled;
+  const effectiveReasoningMaxTokens = (hasMedia && activeProvider?.reasoning_media_max_tokens) ? activeProvider.reasoning_media_max_tokens : reasoningMaxTokens;
+
   // Fetch knowledge base using junction table
   const { data: kbLinks } = await supabase
     .from('knowledge_base_platforms')
@@ -567,7 +573,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       temperature: aiSettings.temperature ?? defaultTemperature,
       max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       tools,
-    }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
+    }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -660,7 +666,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         messages: followUpMessages,
         temperature: aiSettings.temperature ?? defaultTemperature,
         max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
-      }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
+      }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {

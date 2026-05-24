@@ -49,6 +49,9 @@ interface DiscordInteraction {
       name: string;
       value: string | number | boolean;
     }>;
+    resolved?: {
+      attachments?: Record<string, unknown>;
+    };
   };
 }
 
@@ -209,6 +212,7 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
     sendDiscordMessage(botToken, channelId, `🤔 **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`);
 
     // Fire AI handler with a small delay
+    const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);
     handleAIResponse(
       matchedBot.user_id,
       matchedBot.user_id,
@@ -220,7 +224,8 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       messageText,
       botToken,
       'discord',
-      aiSettings as AISettings
+      aiSettings as AISettings,
+      discordHasMedia
     );
 
     return {
