@@ -84,7 +84,7 @@ export async function handleAIResponse(
 
       if (userMsgCount === 1) {
         const greeting = settings.greeting_message;
-        const sent = await sendPlatformMessage(senderId, greeting, accessToken, platform, instagramDbId, whatsappDbId, settings);
+        const sent = await sendPlatformMessage(senderId, greeting, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
         if (sent) {
           await supabase.from('messages').insert({
             conversation_id: conversationId,
@@ -103,7 +103,7 @@ export async function handleAIResponse(
     }
     if (!deducted) {
       const fallback = settings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings);
+      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
       return;
     }
 
@@ -312,7 +312,7 @@ export async function handleAIResponse(
 
     if (toolCall && toolCall.function.name === 'request_human_support') {
       const handoffMsg = "Connecting you to a human agent. Please wait...";
-      const sent = await sendPlatformMessage(senderId, handoffMsg, accessToken, platform, instagramDbId, whatsappDbId, settings);
+      const sent = await sendPlatformMessage(senderId, handoffMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -340,7 +340,7 @@ export async function handleAIResponse(
       });
 
       const confirmationMsg = '\u2705 Order confirmed!\n\nName: ' + (args.customer_name || '\u2014') + '\nPhone: ' + (args.phone || '\u2014') + '\nAddress: ' + (args.delivery_address || '\u2014') + '\nProducts: ' + (args.product_details || '\u2014') + '\n\nWe will process your order shortly. Thank you!';
-      const sent = await sendPlatformMessage(senderId, confirmationMsg, accessToken, platform, instagramDbId, whatsappDbId, settings);
+      const sent = await sendPlatformMessage(senderId, confirmationMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -393,7 +393,7 @@ export async function handleAIResponse(
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
-        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings);
+        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
         if (sent) {
           await supabase.from('messages').insert({
             conversation_id: conversationId,
@@ -407,11 +407,11 @@ export async function handleAIResponse(
       const aiReply = choice?.message?.content;
       if (!aiReply) {
         const fallback = settings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-        await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings);
+        await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
         return;
       }
 
-      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings);
+      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -443,7 +443,7 @@ export async function handleAIResponse(
 
     try {
       const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, aiSettings);
+      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, aiSettings, pageDbId);
     } catch (sendError) {
       console.error('Failed to send fallback message:', sendError);
     }
@@ -457,7 +457,8 @@ async function sendPlatformMessage(
   platform: 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord',
   instagramDbId: string | null,
   whatsappDbId: string | null,
-  aiSettings: AISettings
+  aiSettings: AISettings,
+  pageDbId?: string | null,
 ): Promise<boolean> {
   if (platform === 'instagram') {
     const supabase = await createAdminClient();
@@ -488,13 +489,7 @@ async function sendPlatformMessage(
   }
 
   if (platform === 'discord') {
-    const supabase = await createAdminClient();
-    const { data: dcBot } = await supabase
-      .from('discord_bots')
-      .select('channel_id')
-      .eq('id', whatsappDbId || '')
-      .maybeSingle();
-    const channelId = dcBot?.channel_id || recipientId;
+    const channelId = pageDbId || recipientId;
     return sendDiscordMessage(accessToken, channelId, text);
   }
 

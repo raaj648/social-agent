@@ -212,7 +212,7 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
     handleAIResponse(
       matchedBot.user_id,
       matchedBot.user_id,
-      null,
+      channelId,
       null,
       null,
       conversationId,

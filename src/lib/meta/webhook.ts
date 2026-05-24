@@ -381,12 +381,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     }
   }
 
-  // Show typing indicator (Messenger/Instagram only)
-  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-    sendSenderAction(senderId, accessToken, 'typing_on', platform as 'messenger' | 'instagram')
-      .catch(() => {});
-  }
-
   // Atomic credit deduction
   const { data: deducted, error: deductError } = await supabase.rpc('deduct_credit', { p_user_id: channel.user_id });
   if (deductError) {
@@ -539,6 +533,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   const tools = baseTools.length > 0 ? baseTools : undefined;
 
   const model = activeModel;
+
+  // Show typing indicator (Messenger/Instagram only) — right before AI call
+  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
+    sendSenderAction(senderId, accessToken, 'typing_on', platform as 'messenger' | 'instagram')
+      .catch(() => {});
+  }
 
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${model}, Provider: ${providerConfig?.baseUrl || 'default'}, Message: "${messageText.substring(0, 50)}"`);
 
@@ -703,6 +703,11 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   } catch (error) {
     console.error(`[webhook] AI processing error for conversation ${conversationId}:`, error);
+    // Stop typing indicator on error (Messenger/Instagram only)
+    if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
+      sendSenderAction(senderId, accessToken, 'typing_off', platform as 'messenger' | 'instagram')
+        .catch(() => {});
+    }
     const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
     const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
     if (!sent) console.error(`[webhook] Also failed to send fallback reply to ${senderId} after AI error`);

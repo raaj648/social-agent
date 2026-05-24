@@ -66,6 +66,32 @@ export async function deleteTelegramWebhook(botToken: string): Promise<boolean> 
   }
 }
 
+export async function sendTelegramTyping(
+  botToken: string,
+  chatId: string | number
+): Promise<boolean> {
+  try {
+    const url = `${TELEGRAM_API}${botToken}/sendChatAction`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: String(chatId),
+        action: 'typing',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Telegram sendChatAction error:', err);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Telegram sendChatAction exception:', error);
+    return false;
+  }
+}
+
 export async function getTelegramBotInfo(botToken: string): Promise<{ username?: string; id?: number } | null> {
   try {
     const url = `${TELEGRAM_API}${botToken}/getMe`;

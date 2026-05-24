@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendTelegramMessage } from '@/lib/telegram/bot';
+import { sendTelegramMessage, sendTelegramTyping } from '@/lib/telegram/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
 import type { AISettings } from '@/types';
 
@@ -232,6 +232,9 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
       aiSettings = { ...aiSettings, ...bizSettings } as AISettings;
     }
   }
+
+  // Show typing indicator
+  sendTelegramTyping(botToken, chatId).catch(() => {});
 
   // Handle AI response
   try {
