@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       for (const entry of body.entry) {
         if (entry.messaging) {
           for (const event of entry.messaging) {
-            if (!event.message?.text || !event.sender?.id) continue;
+            if (!event.message?.text || !event.sender?.id || event.message?.is_echo) continue;
 
             const msgId = event.message?.mid;
             if (msgId) {
