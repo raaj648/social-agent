@@ -161,9 +161,13 @@ export async function sendSenderAction(
   recipientId: string,
   pageAccessToken: string,
   action: 'mark_seen' | 'typing_on' | 'typing_off',
+  pageId?: string
 ): Promise<boolean> {
   try {
-    const url = new URL(`${META_GRAPH_URL}/me/messages`);
+    const endpoint = pageId
+      ? `https://graph.facebook.com/v19.0/${pageId}/messages`
+      : `${META_GRAPH_URL}/me/messages`;
+    const url = new URL(endpoint);
     url.searchParams.set('access_token', pageAccessToken);
     const res = await fetch(url.toString(), {
       method: 'POST',
@@ -175,7 +179,7 @@ export async function sendSenderAction(
     });
     if (!res.ok) {
       const err = await res.text();
-      console.error(`sendSenderAction(${action}) failed:`, err);
+      console.error(`sendSenderAction(${action}) via ${endpoint} failed:`, err);
     }
     return res.ok;
   } catch (error) {

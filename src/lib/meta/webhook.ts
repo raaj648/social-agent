@@ -260,14 +260,34 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     aiSettings = settings;
   }
 
-  // Fire sender actions early: mark_seen immediately, typing_on after 500ms stagger (prevents Meta overlap bug)
-  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-    sendSenderAction(senderId, accessToken, 'mark_seen')
+  // Resolve page ID and page access token for Messenger/Instagram sender actions
+  // (Instagram needs the linked Facebook Page — not the IG account — for sender actions)
+  let fbPageId: string | undefined;
+  let fbPageToken: string = accessToken;
+  if (platform === 'messenger') {
+    fbPageId = channel.page_id;
+  } else if (platform === 'instagram') {
+    if (channel.page_id) {
+      const { data: linkedPage } = await supabase
+        .from('connected_pages')
+        .select('page_id, page_access_token')
+        .eq('id', channel.page_id)
+        .single();
+      if (linkedPage && linkedPage.page_access_token) {
+        fbPageId = linkedPage.page_id;
+        fbPageToken = decrypt(linkedPage.page_access_token);
+      }
+    }
+  }
+
+  // Fire sender actions early: mark_seen immediately, typing_on after 1500ms stagger (prevents Meta overlap bug)
+  if ((platform === 'messenger' || platform === 'instagram') && fbPageToken) {
+    sendSenderAction(senderId, fbPageToken, 'mark_seen', fbPageId)
       .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
     setTimeout(() => {
-      sendSenderAction(senderId, accessToken, 'typing_on')
+      sendSenderAction(senderId, fbPageToken, 'typing_on', fbPageId)
         .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
-    }, 500);
+    }, 1500);
   } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
     const waChannel = channel as any;
     if (waChannel.phone_number_id) {
@@ -710,8 +730,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   } catch (error) {
     console.error(`[webhook] AI processing error for conversation ${conversationId}:`, error);
     // Stop typing indicator on error (Messenger/Instagram only — WhatsApp auto-stops on send)
-    if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-      sendSenderAction(senderId, accessToken, 'typing_off')
+    if ((platform === 'messenger' || platform === 'instagram') && fbPageToken) {
+      sendSenderAction(senderId, fbPageToken, 'typing_off', fbPageId)
         .then(ok => { if (!ok) console.error(`[webhook] typing_off failed for ${senderId} on ${platform}`); });
     }
   }

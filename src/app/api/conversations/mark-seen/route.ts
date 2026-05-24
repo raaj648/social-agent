@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
 
     let accessToken = '';
     let senderId = conversation.sender_id;
+    let fbPageId: string | undefined;
 
     if (conversation.platform === 'messenger') {
       const page = conversation.connected_pages;
@@ -39,12 +40,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No page access token' }, { status: 400 });
       }
       accessToken = decrypt(page.page_access_token);
+      fbPageId = page.page_id;
     } else if (conversation.platform === 'instagram') {
       const ig = conversation.instagram_accounts;
-      if (!ig?.ig_access_token) {
-        return NextResponse.json({ error: 'No Instagram access token' }, { status: 400 });
+      if (!ig?.page_id) {
+        return NextResponse.json({ error: 'No linked Facebook page for this Instagram account' }, { status: 400 });
       }
-      accessToken = decrypt(ig.ig_access_token);
+      // Look up the linked Facebook Page for the correct token and page ID
+      const { data: linkedPage } = await adminSupabase
+        .from('connected_pages')
+        .select('page_id, page_access_token')
+        .eq('id', ig.page_id)
+        .single();
+      if (!linkedPage?.page_access_token) {
+        return NextResponse.json({ error: 'Could not find linked Facebook page token' }, { status: 400 });
+      }
+      accessToken = decrypt(linkedPage.page_access_token);
+      fbPageId = linkedPage.page_id;
     } else if (conversation.platform === 'whatsapp') {
       const wa = conversation.whatsapp_accounts;
       if (!wa?.access_token) {
@@ -59,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not decrypt access token' }, { status: 500 });
     }
 
-    const ok = await sendSenderAction(senderId, accessToken, 'mark_seen');
+    const ok = await sendSenderAction(senderId, accessToken, 'mark_seen', fbPageId);
     if (!ok) {
       console.error(`[mark-seen] sendSenderAction failed for conversation ${conversationId}`);
     }
