@@ -35,9 +35,12 @@ export async function POST(request: NextRequest) {
 
     const body = JSON.parse(rawBody);
 
+    // Respond 200 OK immediately — all processing happens in background
+    const res = NextResponse.json({ status: 'ok' }, { status: 200 });
+
     const processedInBatch = new Set<string>();
 
-    // Handle Facebook/Instagram webhook payloads
+    // Handle Facebook/Instagram webhook payloads (non-blocking)
     if (body.object === 'page' || body.object === 'instagram') {
       const platform = body.object === 'instagram' ? 'instagram' : 'messenger';
       for (const entry of body.entry) {
@@ -54,20 +57,20 @@ export async function POST(request: NextRequest) {
               processedInBatch.add(msgId);
             }
 
-            await processWebhookMessage({
+            processWebhookMessage({
               platform,
               senderId: event.sender.id,
               messageText: event.message.text,
               platformMsgId: msgId,
               recipientId: event.recipient?.id || entry.id,
               timestamp: event.timestamp || Date.now(),
-            });
+            }).catch(e => console.error(`[webhook] Background error for ${platform} msg ${msgId}:`, e));
           }
         }
       }
     }
 
-    // Handle WhatsApp webhook payloads (different JSON structure)
+    // Handle WhatsApp webhook payloads (non-blocking)
     if (body.object === 'whatsapp_business_account') {
       for (const entry of body.entry) {
         if (entry.changes) {
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
               const textBody = msg.text?.body || msg.text_body;
               if (!textBody || !msg.from) continue;
 
-              await processWebhookMessage({
+              processWebhookMessage({
                 platform: 'whatsapp',
                 senderId: msg.from,
                 messageText: textBody,
@@ -98,14 +101,14 @@ export async function POST(request: NextRequest) {
                 recipientId,
                 timestamp: msg.timestamp ? Number(msg.timestamp) * 1000 : Date.now(),
                 senderName,
-              });
+              }).catch(e => console.error(`[webhook] Background error for whatsapp msg ${msg.id}:`, e));
             }
           }
         }
       }
     }
 
-    return NextResponse.json({ status: 'ok' }, { status: 200 });
+    return res;
   } catch (error) {
     console.error('Webhook handler error:', error);
     return NextResponse.json({ status: 'ok' }, { status: 200 });
