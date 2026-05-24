@@ -17,12 +17,13 @@ interface Provider {
   default_model: string;
   provider_type: string;
   reasoning_max_tokens: number | null;
+  reasoning_strategy: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
 }
 
-const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', is_active: true };
+const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', reasoning_strategy: '', is_active: true };
 
 export default function OwnerProviders() {
   const router = useRouter();
@@ -41,9 +42,6 @@ export default function OwnerProviders() {
   const [defaultFreeCredits, setDefaultFreeCredits] = useState('50');
   const [defaultCreditsExpiryDays, setDefaultCreditsExpiryDays] = useState('30');
 
-  const [reasoningEnabled, setReasoningEnabled] = useState(false);
-  const [reasoningMaxTokens, setReasoningMaxTokens] = useState('512');
-  const [savingReasoning, setSavingReasoning] = useState(false);
   const [savingAiDefaults, setSavingAiDefaults] = useState(false);
   const [defaultConvMemoryCount, setDefaultConvMemoryCount] = useState('10');
   const [defaultTemperature, setDefaultTemperature] = useState('0.7');
@@ -82,8 +80,6 @@ export default function OwnerProviders() {
     if (settingsData.default_conversation_memory_count !== undefined) setDefaultConvMemoryCount(String(settingsData.default_conversation_memory_count));
     if (settingsData.default_temperature !== undefined) setDefaultTemperature(String(settingsData.default_temperature));
     if (settingsData.default_max_tokens !== undefined) setDefaultMaxTokens(String(settingsData.default_max_tokens));
-    if (settingsData.reasoning_enabled !== undefined) setReasoningEnabled(Boolean(settingsData.reasoning_enabled));
-    if (settingsData.reasoning_max_tokens !== undefined) setReasoningMaxTokens(String(settingsData.reasoning_max_tokens));
   }
 
   function openAdd() {
@@ -101,6 +97,7 @@ export default function OwnerProviders() {
       default_model: p.default_model,
       provider_type: p.provider_type || 'generic',
       reasoning_max_tokens: p.reasoning_max_tokens !== null && p.reasoning_max_tokens !== undefined ? String(p.reasoning_max_tokens) : '',
+      reasoning_strategy: p.reasoning_strategy || '',
       is_active: p.is_active,
     });
     setShowModal(true);
@@ -143,31 +140,6 @@ export default function OwnerProviders() {
       }
     } catch (e: any) {
       setStatus({ type: 'error', text: e.message });
-    }
-  }
-
-  async function handleSaveReasoning() {
-    setSavingReasoning(true);
-    try {
-      const body: Record<string, unknown> = {
-        reasoning_enabled: reasoningEnabled,
-        reasoning_max_tokens: reasoningEnabled ? (parseInt(reasoningMaxTokens) || 512) : 0,
-      };
-      const res = await fetch('/api/admin/owner/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStatus({ type: 'success', text: 'Reasoning settings saved' });
-      } else {
-        setStatus({ type: 'error', text: data.error || 'Failed to save' });
-      }
-    } catch (e: any) {
-      setStatus({ type: 'error', text: e.message });
-    } finally {
-      setSavingReasoning(false);
     }
   }
 
@@ -320,6 +292,20 @@ export default function OwnerProviders() {
                     const typeColor = p.provider_type === 'openrouter' ? 'text-violet-400 bg-violet-500/10 border-violet-500/20' :
                       p.provider_type === 'deepseek' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
                       'text-white/50 bg-white/5 border-white/10';
+                    const reasoningDisplay = () => {
+                      if (p.provider_type === 'openrouter') {
+                        if (p.reasoning_max_tokens === 0) return <span className="text-xs text-white/30">Off</span>;
+                        if (p.reasoning_max_tokens) return <span className="text-xs text-purple-400">{p.reasoning_max_tokens}</span>;
+                        return <span className="text-xs text-white/30">Default</span>;
+                      }
+                      if (p.provider_type === 'deepseek') {
+                        if (p.reasoning_strategy === 'disabled') return <span className="text-xs text-white/30">Off</span>;
+                        if (p.reasoning_strategy === 'high') return <span className="text-xs text-emerald-400">High</span>;
+                        if (p.reasoning_strategy === 'max') return <span className="text-xs text-amber-400">Max</span>;
+                        return <span className="text-xs text-white/30">Default</span>;
+                      }
+                      return <span className="text-xs text-white/20">N/A</span>;
+                    };
                     return (
                     <tr key={p.id} className="border-b border-white/5 text-white/70">
                       <td className="py-3 pr-4 font-medium text-white">{p.name}</td>
@@ -333,11 +319,7 @@ export default function OwnerProviders() {
                         <span className="rounded bg-white/5 px-2 py-0.5 text-xs">{p.default_model}</span>
                       </td>
                       <td className="py-3 pr-4">
-                        {p.reasoning_max_tokens ? (
-                          <span className="text-xs text-purple-400">{p.reasoning_max_tokens}</span>
-                        ) : (
-                          <span className="text-xs text-white/30">Default</span>
-                        )}
+                        {reasoningDisplay()}
                       </td>
                       <td className="py-3 pr-4">
                         {p.is_active ? (
@@ -363,73 +345,6 @@ export default function OwnerProviders() {
             </table>
           </div>
         )}
-      </div>
-
-      {/* AI Reasoning */}
-      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-              <Brain className="h-5 w-5 text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-white">AI Reasoning</h3>
-              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is enabled internally</p>
-            </div>
-          </div>
-          <button
-            onClick={handleSaveReasoning}
-            disabled={savingReasoning}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-purple-500 hover:to-pink-500 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" /> {savingReasoning ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-        <div className="space-y-3">
-          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${!reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
-            <input
-              type="radio"
-              name="reasoning"
-              checked={!reasoningEnabled}
-              onChange={() => { setReasoningEnabled(false); setReasoningMaxTokens('0'); }}
-              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
-            />
-            <div>
-              <span className="text-sm font-medium text-white">Reasoning OFF</span>
-              <p className="text-xs text-white/30 mt-0.5">No internal thinking, fastest and cheapest responses</p>
-            </div>
-          </label>
-          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
-            <input
-              type="radio"
-              name="reasoning"
-              checked={reasoningEnabled}
-              onChange={() => { setReasoningEnabled(true); if (!reasoningMaxTokens || reasoningMaxTokens === '0') setReasoningMaxTokens('512'); }}
-              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
-            />
-            <div>
-              <span className="text-sm font-medium text-white">Reasoning ON</span>
-              <p className="text-xs text-white/30 mt-0.5">Model thinks internally for better accuracy. Reasoning stripped from customer output.</p>
-            </div>
-          </label>
-          {reasoningEnabled && (
-            <div className="pl-4">
-              <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
-                <Brain className="h-3 w-3 text-purple-400" /> Reasoning Max Tokens
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={4096}
-                step={64}
-                value={reasoningMaxTokens}
-                onChange={(e) => setReasoningMaxTokens(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50"
-              />
-              <p className="text-xs text-white/30 mt-1">Token budget for internal reasoning (higher = better quality but more tokens consumed)</p>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* AI Defaults */}
@@ -681,13 +596,36 @@ export default function OwnerProviders() {
                     <option value="deepseek">DeepSeek</option>
                   </select>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-white/60">Reasoning Max Tokens</label>
-                  <input type="number" min={0} max={4096} step={64} value={form.reasoning_max_tokens}
-                    onChange={(e) => setForm(f => ({ ...f, reasoning_max_tokens: e.target.value }))}
-                    placeholder="Empty = use global default"
-                    className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
-                </div>
+                {form.provider_type === 'openrouter' && (
+                  <div>
+                    <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                      <Brain className="h-3 w-3 text-violet-400" /> Max Reasoning Tokens
+                    </label>
+                    <input type="number" min={0} max={4096} step={64} value={form.reasoning_max_tokens}
+                      onChange={(e) => setForm(f => ({ ...f, reasoning_max_tokens: e.target.value }))}
+                      placeholder="0 = Off, empty = Default (512)"
+                      className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
+                  </div>
+                )}
+                {form.provider_type === 'deepseek' && (
+                  <div>
+                    <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                      <Brain className="h-3 w-3 text-emerald-400" /> Thinking Mode
+                    </label>
+                    <select value={form.reasoning_strategy} onChange={(e) => setForm(f => ({ ...f, reasoning_strategy: e.target.value }))}
+                      className="w-full mt-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50">
+                      <option value="">Default (High)</option>
+                      <option value="disabled">Disabled</option>
+                      <option value="high">High</option>
+                      <option value="max">Max</option>
+                    </select>
+                  </div>
+                )}
+                {form.provider_type === 'generic' && (
+                  <div>
+                    <p className="mt-2 text-xs text-white/30">Reasoning not supported for this provider type.</p>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">

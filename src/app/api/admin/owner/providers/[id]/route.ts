@@ -48,6 +48,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (body.reasoning_max_tokens !== undefined) {
       updates.reasoning_max_tokens = body.reasoning_max_tokens !== '' ? parseInt(body.reasoning_max_tokens) || null : null;
     }
+    if (body.reasoning_strategy !== undefined) {
+      updates.reasoning_strategy = body.reasoning_strategy || null;
+    }
     if (body.is_active !== undefined) updates.is_active = body.is_active;
 
     const { data, error } = await supabase

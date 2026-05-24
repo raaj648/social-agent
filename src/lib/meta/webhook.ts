@@ -401,16 +401,16 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
   let masterPrompt: string | null = null;
   let reasoningEnabled = true;
-  let reasoningMaxTokens = 512;
+  let reasoningMaxTokens: number | undefined;
+  let reasoningStrategy: string | undefined;
 
-  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }, { data: reasoningTokensCfg }] = await Promise.all([
+  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }] = await Promise.all([
     supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'reasoning_max_tokens').maybeSingle(),
   ]);
   const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
   const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
@@ -424,13 +424,14 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         providerType: activeProvider.provider_type,
       };
       activeModel = activeProvider.default_model || activeModel;
+      reasoningMaxTokens = activeProvider.reasoning_max_tokens ?? undefined;
+      reasoningStrategy = activeProvider.reasoning_strategy || undefined;
     } catch {
       console.warn('Failed to decrypt provider API key, falling back to default');
     }
   }
   masterPrompt = platformCfg?.value as string || null;
   reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
-  reasoningMaxTokens = reasoningTokensCfg?.value ? Number(reasoningTokensCfg.value) : 512;
 
   // Fetch knowledge base using junction table
   const { data: kbLinks } = await supabase
@@ -566,7 +567,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       temperature: aiSettings.temperature ?? defaultTemperature,
       max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       tools,
-    }, providerConfig, !reasoningEnabled, reasoningMaxTokens));
+    }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -659,7 +660,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         messages: followUpMessages,
         temperature: aiSettings.temperature ?? defaultTemperature,
         max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
-      }, providerConfig, !reasoningEnabled, reasoningMaxTokens));
+      }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {

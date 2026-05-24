@@ -6,7 +6,7 @@ import { encrypt } from '@/lib/crypto';
 export const dynamic = 'force-dynamic';
 
 const AI_KEYS = ['default_model', 'default_free_credits', 'default_credits_expiry_days', 'openrouter_key'];
-const AI_NUMERIC_KEYS = ['default_conversation_memory_count', 'default_temperature', 'default_max_tokens', 'reasoning_max_tokens'];
+const AI_NUMERIC_KEYS = ['default_conversation_memory_count', 'default_temperature', 'default_max_tokens'];
 
 export async function GET() {
   try {
@@ -30,7 +30,6 @@ export async function GET() {
       default_conversation_memory_count: settingsRes.data?.find(s => s.key === 'default_conversation_memory_count')?.value || 10,
       default_temperature: settingsRes.data?.find(s => s.key === 'default_temperature')?.value || 0.7,
       default_max_tokens: settingsRes.data?.find(s => s.key === 'default_max_tokens')?.value || 500,
-      reasoning_max_tokens: settingsRes.data?.find(s => s.key === 'reasoning_max_tokens')?.value || 512,
     };
 
     const settings = settingsRes.data || [];
@@ -76,9 +75,7 @@ export async function PUT(request: NextRequest) {
       if (body[key] !== undefined) {
         const raw = body[key];
         let val: number;
-        if (key === 'reasoning_max_tokens') {
-          val = typeof raw === 'string' ? parseInt(raw) || 0 : Number(raw) || 0;
-        } else if (key === 'default_temperature') {
+        if (key === 'default_temperature') {
           val = typeof raw === 'string' ? parseFloat(raw) || 0.7 : Number(raw) || 0.7;
         } else {
           val = typeof raw === 'string' ? parseInt(raw) || 10 : Number(raw) || 10;

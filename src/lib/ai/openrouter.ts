@@ -41,7 +41,8 @@ function addReasoningBody(
   body: Record<string, unknown>,
   providerType: ProviderType,
   suppressReasoning: boolean,
-  reasoningMaxTokens: number
+  reasoningMaxTokens?: number,
+  reasoningStrategy?: string
 ): void {
   switch (providerType) {
     case 'openrouter':
@@ -50,14 +51,16 @@ function addReasoningBody(
       if (suppressReasoning) {
         body.reasoning = { max_tokens: 0 };
       } else {
-        body.reasoning = { max_tokens: reasoningMaxTokens };
+        body.reasoning = { max_tokens: reasoningMaxTokens ?? 512 };
       }
       break;
     case 'deepseek':
       if (suppressReasoning) {
         body.thinking = 'disabled';
+      } else if (reasoningStrategy && reasoningStrategy !== 'default') {
+        body.thinking = reasoningStrategy;
       } else {
-        body.thinking = reasoningMaxTokens > 1024 ? 'max' : 'high';
+        body.thinking = 'high';
       }
       break;
     case 'generic':
@@ -69,7 +72,8 @@ export async function createCompletion(
   params: CompletionParams,
   providerConfig?: ProviderConfig,
   suppressReasoning?: boolean,
-  reasoningMaxTokens?: number
+  reasoningMaxTokens?: number,
+  reasoningStrategy?: string
 ): Promise<OpenRouterResponse> {
   const apiKey = providerConfig?.apiKey;
   if (!apiKey) throw new Error('AI_API_KEY is not set');
@@ -84,7 +88,7 @@ export async function createCompletion(
     max_tokens: params.max_tokens ?? 500,
   };
 
-  addReasoningBody(body, providerType, suppressReasoning ?? false, reasoningMaxTokens ?? 512);
+  addReasoningBody(body, providerType, suppressReasoning ?? false, reasoningMaxTokens, reasoningStrategy);
 
   if (params.tools && params.tools.length > 0) {
     body.tools = params.tools;

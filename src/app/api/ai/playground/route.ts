@@ -43,14 +43,13 @@ export async function POST(request: NextRequest) {
     ]);
 
     const profile = profileRes.data;
-    const [providerRes, configRes, reasoningCfg, memoryCountCfg, tempCfg, tokensCfg, reasoningTokensCfg] = await Promise.all([
+    const [providerRes, configRes, reasoningCfg, memoryCountCfg, tempCfg, tokensCfg] = await Promise.all([
       adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
-      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_max_tokens').maybeSingle(),
     ]) as any;
     const defaultMemoryCount = memoryCountCfg?.data?.value ? Number(memoryCountCfg.data.value) : 10;
     const defaultTemperature = tempCfg?.data?.value ? Number(tempCfg.data.value) : 0.7;
@@ -72,7 +71,8 @@ export async function POST(request: NextRequest) {
     let activeModel = aiSettings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
     let reasoningEnabled = true;
-    let reasoningMaxTokens = 512;
+    let reasoningMaxTokens: number | undefined;
+    let reasoningStrategy: string | undefined;
 
     if (!providerRes.error && providerRes.data) {
       try {
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
           providerType: providerRes.data.provider_type,
         };
         activeModel = providerRes.data.default_model || activeModel;
+        reasoningMaxTokens = providerRes.data.reasoning_max_tokens ?? undefined;
+        reasoningStrategy = providerRes.data.reasoning_strategy || undefined;
       } catch {
         console.warn('Playground: failed to decrypt provider key, falling back');
       }
@@ -89,7 +91,6 @@ export async function POST(request: NextRequest) {
 
     masterPrompt = configRes.data?.value as string || null;
     reasoningEnabled = reasoningCfg?.data?.value === true || reasoningCfg?.data?.value === 'true';
-    reasoningMaxTokens = reasoningTokensCfg?.data?.value ? Number(reasoningTokensCfg.data.value) : 512;
 
     // Fetch knowledge base using junction table (platform-scoped)
     let filteredKB: Array<{ category: string; title: string; content: string }> = [];
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest) {
       temperature: aiSettings.temperature ?? defaultTemperature,
       max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       tools,
-    }, providerConfig, !reasoningEnabled, reasoningMaxTokens);
+    }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy);
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
           ],
           temperature: aiSettings.temperature ?? defaultTemperature,
           max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
-        }, providerConfig, !reasoningEnabled, reasoningMaxTokens);
+        }, providerConfig, !reasoningEnabled, reasoningMaxTokens, reasoningStrategy);
 
         finalReply = followUp.choices?.[0]?.message?.content || 'No response generated.';
       } else if (toolCall.function.name === 'extract_order_details') {

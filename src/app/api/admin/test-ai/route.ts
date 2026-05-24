@@ -27,10 +27,12 @@ export async function POST(request: NextRequest) {
     let baseUrl: string;
 
     let providerType: string | undefined;
+    let reasoningMaxTokens: number | undefined;
+    let reasoningStrategy: string | undefined;
     if (providerId) {
       const { data: provider, error } = await supabase
         .from('ai_providers')
-        .select('api_key, base_url, provider_type')
+        .select('api_key, base_url, provider_type, reasoning_max_tokens, reasoning_strategy')
         .eq('id', providerId)
         .single();
 
@@ -43,6 +45,8 @@ export async function POST(request: NextRequest) {
       }
       baseUrl = provider.base_url;
       providerType = provider.provider_type;
+      reasoningMaxTokens = provider.reasoning_max_tokens ?? undefined;
+      reasoningStrategy = provider.reasoning_strategy || undefined;
     } else {
       apiKey = await getOpenRouterKey();
       baseUrl = 'https://openrouter.ai/api/v1';
@@ -68,19 +72,13 @@ export async function POST(request: NextRequest) {
         : masterPrompt;
     }
 
-    // Fetch reasoning settings
+    // Fetch reasoning master switch
     const { data: reasoningCfg } = await supabase
       .from('platform_settings')
       .select('value')
       .eq('key', 'reasoning_enabled')
       .maybeSingle();
-    const { data: reasoningTokensCfg } = await supabase
-      .from('platform_settings')
-      .select('value')
-      .eq('key', 'reasoning_max_tokens')
-      .maybeSingle();
     const reasoningEnabled = reasoningCfg?.value === true || reasoningCfg?.value === 'true';
-    const reasoningMaxTokens = reasoningTokensCfg?.value ? Number(reasoningTokensCfg.value) : 512;
 
     const chatMessages = effectiveSystemPrompt
       ? [{ role: 'system', content: effectiveSystemPrompt }, ...messages]
@@ -90,7 +88,8 @@ export async function POST(request: NextRequest) {
       { model, messages: chatMessages },
       { baseUrl, apiKey, providerType: providerType as any },
       !reasoningEnabled,
-      reasoningMaxTokens
+      reasoningMaxTokens,
+      reasoningStrategy
     );
 
     const timeMs = Date.now() - start;
