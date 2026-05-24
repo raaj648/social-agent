@@ -101,9 +101,11 @@ export async function handleAIResponse(
     if (deductError) {
       console.error('Credit deduction error:', deductError);
     }
-    if (!deducted) {
-      const fallback = settings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
+    if (deducted === false) {
+      console.warn(`[webhook] Credit deduction failed for user ${targetUserId} — no credits remaining`);
+      if (settings.fallback_response) {
+        await sendPlatformMessage(senderId, settings.fallback_response, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
+      }
       return;
     }
 
@@ -298,14 +300,26 @@ export async function handleAIResponse(
 
     const tools = baseTools.length > 0 ? baseTools : undefined;
 
+    const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try { return await fn(); }
+        catch (error) {
+          if (attempt === maxRetries) throw error;
+          console.warn(`[handler] AI attempt ${attempt} for conversation ${conversationId} failed, retrying in ${Math.pow(2, attempt - 1)}s:`, error);
+          await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+        }
+      }
+      throw new Error('Unreachable');
+    };
+
     // Create completion
-    const response = await createCompletion({
+    const response = await withRetry(() => createCompletion({
       model: activeModel,
       messages: completionMessages,
       temperature: settings.temperature || 0.7,
       max_tokens: settings.max_tokens || 500,
       tools,
-    }, providerConfig, !reasoningEnabled);
+    }, providerConfig, !reasoningEnabled));
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -384,12 +398,12 @@ export async function handleAIResponse(
         { role: 'tool' as const, tool_call_id: toolCall.id, content: toolResult },
       ];
 
-      const followUp = await createCompletion({
+      const followUp = await withRetry(() => createCompletion({
         model: activeModel,
         messages: followUpMessages,
         temperature: settings.temperature || 0.7,
         max_tokens: settings.max_tokens || 500,
-      }, providerConfig, !reasoningEnabled);
+      }, providerConfig, !reasoningEnabled));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
@@ -406,8 +420,7 @@ export async function handleAIResponse(
     } else {
       const aiReply = choice?.message?.content;
       if (!aiReply) {
-        const fallback = settings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-        await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId);
+        console.warn(`[handler] AI returned empty reply for conversation ${conversationId}`);
         return;
       }
 
@@ -440,13 +453,6 @@ export async function handleAIResponse(
     });
   } catch (error) {
     console.error('AI handler error:', error);
-
-    try {
-      const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-      await sendPlatformMessage(senderId, fallback, accessToken, platform, instagramDbId, whatsappDbId, aiSettings, pageDbId);
-    } catch (sendError) {
-      console.error('Failed to send fallback message:', sendError);
-    }
   }
 }
 

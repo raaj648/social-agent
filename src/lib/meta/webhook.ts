@@ -295,7 +295,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       model: 'openai/gpt-4o-mini',
       temperature: 0.7,
       max_tokens: 500,
-      fallback_response: "Thanks for your message! We'll get back to you shortly.",
+      fallback_response: '',
       conversation_memory_count: 10,
       keywords_blacklist: [],
       business_hours_only: false,
@@ -388,11 +388,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   if (deductError) {
     console.error(`[webhook] deduct_credit RPC error for user ${channel.user_id}:`, deductError);
   }
-  if (!deducted) {
-    console.warn(`[webhook] Credit deduction failed for user ${channel.user_id} (deductError: ${deductError?.message || 'none'}). Sending fallback.`);
-    const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-    const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
-    if (!sent) console.error(`[webhook] Failed to send fallback reply to ${senderId} on ${platform}`);
+  if (deducted === false) {
+    console.warn(`[webhook] Credit deduction failed for user ${channel.user_id} — no credits remaining`);
+    if (aiSettings.fallback_response) {
+      const sent = await sendPlatformReply(platform, senderId, aiSettings.fallback_response, accessToken, channel);
+      if (!sent) console.error(`[webhook] Failed to send no-credits message to ${senderId} on ${platform}`);
+    }
     return;
   }
   console.log(`[webhook] Credit deducted for user ${channel.user_id}, proceeding to AI call`);
@@ -536,6 +537,18 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   const model = activeModel;
 
+  const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try { return await fn(); }
+      catch (error) {
+        if (attempt === maxRetries) throw error;
+        console.warn(`[webhook] AI attempt ${attempt} for conversation ${conversationId} failed, retrying in ${Math.pow(2, attempt - 1)}s:`, error);
+        await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+      }
+    }
+    throw new Error('Unreachable');
+  };
+
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${model}, Provider: ${providerConfig?.baseUrl || 'default'}, Message: "${messageText.substring(0, 50)}"`);
 
   try {
@@ -545,13 +558,13 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       { role: 'user' as const, content: messageText },
     ];
 
-    const response = await createCompletion({
+    const response = await withRetry(() => createCompletion({
       model,
       messages: completionMessages,
       temperature: aiSettings.temperature || 0.7,
       max_tokens: aiSettings.max_tokens || 500,
       tools,
-    }, providerConfig, !reasoningEnabled);
+    }, providerConfig, !reasoningEnabled));
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -639,12 +652,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         { role: 'tool', tool_call_id: toolCall.id, content: toolResult },
       ];
 
-      const followUp = await createCompletion({
+      const followUp = await withRetry(() => createCompletion({
         model,
         messages: followUpMessages,
         temperature: aiSettings.temperature || 0.7,
         max_tokens: aiSettings.max_tokens || 500,
-      }, providerConfig);
+      }, providerConfig));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
@@ -661,10 +674,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     } else {
       const aiReply = choice?.message?.content;
       if (!aiReply) {
-        console.warn(`[webhook] AI returned empty reply for conversation ${conversationId}, sending fallback`);
-        const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-        const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
-        if (!sent) console.error(`[webhook] Failed to send fallback (empty reply) to ${senderId}`);
+        console.warn(`[webhook] AI returned empty reply for conversation ${conversationId}`);
         return;
       }
 
@@ -704,9 +714,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       sendSenderAction(senderId, accessToken, 'typing_off')
         .then(ok => { if (!ok) console.error(`[webhook] typing_off failed for ${senderId} on ${platform}`); });
     }
-    const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
-    const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
-    if (!sent) console.error(`[webhook] Also failed to send fallback reply to ${senderId} after AI error`);
   }
 }
 

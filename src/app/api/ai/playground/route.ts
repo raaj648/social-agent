@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       system_prompt: null,
       temperature: 0.7,
       max_tokens: 500,
-      fallback_response: "Thanks for your message! We'll get back to you shortly.",
+      fallback_response: '',
       greeting_enabled: true,
       greeting_message: 'Hello! How can we help you today?',
       conversation_memory_count: 10,

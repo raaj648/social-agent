@@ -178,6 +178,13 @@ export default function ConversationDetailPage({
 
     setMessages(msgs || []);
     setLoading(false);
+
+    // Mark as seen on the platform when admin opens the conversation
+    fetch('/api/conversations/mark-seen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: params.id }),
+    }).catch(e => console.error('mark-seen failed:', e));
   }
 
   async function toggleAiPause() {
