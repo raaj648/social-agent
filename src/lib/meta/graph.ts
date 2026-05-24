@@ -161,12 +161,9 @@ export async function sendSenderAction(
   recipientId: string,
   pageAccessToken: string,
   action: 'mark_seen' | 'typing_on' | 'typing_off',
-  pageId?: string
 ): Promise<boolean> {
   try {
-    const endpoint = pageId
-      ? `https://graph.facebook.com/v19.0/${pageId}/messages`
-      : `${META_GRAPH_URL}/me/messages`;
+    const endpoint = `${META_GRAPH_URL}/me/messages`;
     const url = new URL(endpoint);
     url.searchParams.set('access_token', pageAccessToken);
     const res = await fetch(url.toString(), {
