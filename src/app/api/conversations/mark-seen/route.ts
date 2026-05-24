@@ -46,17 +46,18 @@ export async function POST(request: NextRequest) {
       if (!ig?.page_id) {
         return NextResponse.json({ error: 'No linked Facebook page for this Instagram account' }, { status: 400 });
       }
-      // Look up the linked Facebook Page for the correct token and page ID
+      // Instagram uses ig_access_token directly (has instagram_manage_messages permission)
+      if (!ig.access_token) {
+        return NextResponse.json({ error: 'No Instagram access token' }, { status: 400 });
+      }
+      accessToken = decrypt(ig.access_token);
+      // Resolve the linked Facebook Page's text page_id for the endpoint
       const { data: linkedPage } = await adminSupabase
         .from('connected_pages')
-        .select('page_id, page_access_token')
+        .select('page_id')
         .eq('id', ig.page_id)
         .single();
-      if (!linkedPage?.page_access_token) {
-        return NextResponse.json({ error: 'Could not find linked Facebook page token' }, { status: 400 });
-      }
-      accessToken = decrypt(linkedPage.page_access_token);
-      fbPageId = linkedPage.page_id;
+      fbPageId = linkedPage?.page_id;
     } else if (conversation.platform === 'whatsapp') {
       const wa = conversation.whatsapp_accounts;
       if (!wa?.access_token) {

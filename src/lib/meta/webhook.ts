@@ -275,19 +275,14 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         .single();
       if (linkedPage && linkedPage.page_access_token) {
         fbPageId = linkedPage.page_id;
-        fbPageToken = decrypt(linkedPage.page_access_token);
       }
     }
   }
 
-  // Fire sender actions early: mark_seen immediately, typing_on after 1500ms stagger (prevents Meta overlap bug)
+  // Fire sender action early: typing_on (mark_seen triggers overlap bug with Meta, handled separately in admin dashboard)
   if ((platform === 'messenger' || platform === 'instagram') && fbPageToken) {
-    sendSenderAction(senderId, fbPageToken, 'mark_seen', fbPageId)
-      .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
-    setTimeout(() => {
-      sendSenderAction(senderId, fbPageToken, 'typing_on', fbPageId)
-        .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
-    }, 1500);
+    sendSenderAction(senderId, fbPageToken, 'typing_on', fbPageId)
+      .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
   } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
     const waChannel = channel as any;
     if (waChannel.phone_number_id) {

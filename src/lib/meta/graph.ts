@@ -177,9 +177,11 @@ export async function sendSenderAction(
         sender_action: action,
       }),
     });
+    const body = await res.text();
     if (!res.ok) {
-      const err = await res.text();
-      console.error(`sendSenderAction(${action}) via ${endpoint} failed:`, err);
+      console.error(`sendSenderAction(${action}) via ${endpoint} failed:`, body);
+    } else {
+      console.log(`[sendSenderAction] ${action} via ${endpoint}:`, res.status, body);
     }
     return res.ok;
   } catch (error) {
