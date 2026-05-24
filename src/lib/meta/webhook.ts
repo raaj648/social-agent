@@ -95,6 +95,21 @@ async function findOrCreateConversation(
   return conversation;
 }
 
+async function getFacebookPageId(supabase: any, channel: any, platform: string): Promise<string | null> {
+  if (platform === 'messenger') {
+    return channel.page_id || null;
+  }
+  if (platform === 'instagram' && channel.page_id) {
+    const { data } = await supabase
+      .from('connected_pages')
+      .select('page_id')
+      .eq('id', channel.page_id)
+      .maybeSingle();
+    return data?.page_id || null;
+  }
+  return null;
+}
+
 export async function processWebhookMessage(payload: WebhookPayload): Promise<void> {
   const supabase = await createAdminClient();
   const { platform, senderId, messageText, platformMsgId, recipientId, senderName } = payload;
@@ -269,8 +284,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
           .catch(() => {});
       }
     } else if (platform === 'messenger' || platform === 'instagram') {
-      sendSenderAction(senderId, accessToken, 'mark_seen', platform as 'messenger' | 'instagram')
-        .catch(() => {});
+      getFacebookPageId(supabase, channel, platform).then(fbPageId => {
+        if (fbPageId) {
+          sendSenderAction(senderId, accessToken, 'mark_seen', fbPageId)
+            .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
+        }
+      });
     }
   }
 
@@ -536,8 +555,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   // Show typing indicator (Messenger/Instagram only) — right before AI call
   if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-    sendSenderAction(senderId, accessToken, 'typing_on', platform as 'messenger' | 'instagram')
-      .catch(() => {});
+    getFacebookPageId(supabase, channel, platform).then(fbPageId => {
+      if (fbPageId) {
+        sendSenderAction(senderId, accessToken, 'typing_on', fbPageId)
+          .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
+      }
+    });
   }
 
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${model}, Provider: ${providerConfig?.baseUrl || 'default'}, Message: "${messageText.substring(0, 50)}"`);
@@ -705,8 +728,11 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     console.error(`[webhook] AI processing error for conversation ${conversationId}:`, error);
     // Stop typing indicator on error (Messenger/Instagram only)
     if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-      sendSenderAction(senderId, accessToken, 'typing_off', platform as 'messenger' | 'instagram')
-        .catch(() => {});
+      const fbPageId = await getFacebookPageId(supabase, channel, platform);
+      if (fbPageId) {
+        sendSenderAction(senderId, accessToken, 'typing_off', fbPageId)
+          .then(ok => { if (!ok) console.error(`[webhook] typing_off failed for ${senderId} on ${platform}`); });
+      }
     }
     const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
     const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
