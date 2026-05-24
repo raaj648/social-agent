@@ -161,10 +161,9 @@ export async function sendSenderAction(
   recipientId: string,
   pageAccessToken: string,
   action: 'mark_seen' | 'typing_on' | 'typing_off',
-  pageId: string,
 ): Promise<boolean> {
   try {
-    const url = new URL(`https://graph.facebook.com/v19.0/${pageId}/messages`);
+    const url = new URL(`${META_GRAPH_URL}/me/messages`);
     url.searchParams.set('access_token', pageAccessToken);
     const res = await fetch(url.toString(), {
       method: 'POST',
@@ -181,6 +180,37 @@ export async function sendSenderAction(
     return res.ok;
   } catch (error) {
     console.error(`sendSenderAction(${action}) exception:`, error);
+    return false;
+  }
+}
+
+export async function sendWhatsAppTypingAndRead(
+  phoneNumberId: string,
+  messageId: string,
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const url = new URL(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`);
+    url.searchParams.set('access_token', accessToken);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+        typing_indicator: {
+          type: 'text',
+        },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('sendWhatsAppTypingAndRead failed:', err);
+    }
+    return res.ok;
+  } catch (error) {
+    console.error('sendWhatsAppTypingAndRead exception:', error);
     return false;
   }
 }

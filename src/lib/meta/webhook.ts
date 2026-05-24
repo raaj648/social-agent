@@ -1,6 +1,6 @@
 ﻿import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile, sendSenderAction, markWhatsAppMessageRead } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile, sendSenderAction, markWhatsAppMessageRead, sendWhatsAppTypingAndRead } from '@/lib/meta/graph';
 import { createCompletion } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
@@ -93,21 +93,6 @@ async function findOrCreateConversation(
   }
 
   return conversation;
-}
-
-async function getFacebookPageId(supabase: any, channel: any, platform: string): Promise<string | null> {
-  if (platform === 'messenger') {
-    return channel.page_id || null;
-  }
-  if (platform === 'instagram' && channel.page_id) {
-    const { data } = await supabase
-      .from('connected_pages')
-      .select('page_id')
-      .eq('id', channel.page_id)
-      .maybeSingle();
-    return data?.page_id || null;
-  }
-  return null;
 }
 
 export async function processWebhookMessage(payload: WebhookPayload): Promise<void> {
@@ -281,15 +266,11 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       const waChannel = channel as any;
       if (waChannel.phone_number_id) {
         markWhatsAppMessageRead(waChannel.phone_number_id, platformMsgId, accessToken)
-          .catch(() => {});
+          .then(ok => { if (!ok) console.error(`[webhook] markWhatsAppMessageRead failed for ${senderId}`); });
       }
     } else if (platform === 'messenger' || platform === 'instagram') {
-      getFacebookPageId(supabase, channel, platform).then(fbPageId => {
-        if (fbPageId) {
-          sendSenderAction(senderId, accessToken, 'mark_seen', fbPageId)
-            .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
-        }
-      });
+      sendSenderAction(senderId, accessToken, 'mark_seen')
+        .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
     }
   }
 
@@ -553,14 +534,18 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   const model = activeModel;
 
-  // Show typing indicator (Messenger/Instagram only) — right before AI call
+  // Show typing indicator with artificial delay (FB/IG/WhatsApp)
   if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-    getFacebookPageId(supabase, channel, platform).then(fbPageId => {
-      if (fbPageId) {
-        sendSenderAction(senderId, accessToken, 'typing_on', fbPageId)
-          .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
-      }
-    });
+    const ok = await sendSenderAction(senderId, accessToken, 'typing_on');
+    if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
+    const waChannel = channel as any;
+    if (waChannel.phone_number_id) {
+      const ok = await sendWhatsAppTypingAndRead(waChannel.phone_number_id, platformMsgId, accessToken);
+      if (!ok) console.error(`[webhook] sendWhatsAppTypingAndRead failed for ${senderId}`);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
   }
 
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${model}, Provider: ${providerConfig?.baseUrl || 'default'}, Message: "${messageText.substring(0, 50)}"`);
@@ -726,13 +711,10 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   } catch (error) {
     console.error(`[webhook] AI processing error for conversation ${conversationId}:`, error);
-    // Stop typing indicator on error (Messenger/Instagram only)
+    // Stop typing indicator on error (Messenger/Instagram only — WhatsApp auto-stops on send)
     if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-      const fbPageId = await getFacebookPageId(supabase, channel, platform);
-      if (fbPageId) {
-        sendSenderAction(senderId, accessToken, 'typing_off', fbPageId)
-          .then(ok => { if (!ok) console.error(`[webhook] typing_off failed for ${senderId} on ${platform}`); });
-      }
+      sendSenderAction(senderId, accessToken, 'typing_off')
+        .then(ok => { if (!ok) console.error(`[webhook] typing_off failed for ${senderId} on ${platform}`); });
     }
     const fallback = aiSettings.fallback_response || "Thanks for your message! We'll get back to you shortly.";
     const sent = await sendPlatformReply(platform, senderId, fallback, accessToken, channel);
