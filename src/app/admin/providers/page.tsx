@@ -145,13 +145,14 @@ export default function OwnerProviders() {
   async function handleSaveReasoning() {
     setSavingReasoning(true);
     try {
+      const body: Record<string, unknown> = {
+        reasoning_enabled: reasoningEnabled,
+        reasoning_max_tokens: reasoningEnabled ? (parseInt(reasoningMaxTokens) || 512) : 0,
+      };
       const res = await fetch('/api/admin/owner/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reasoning_enabled: reasoningEnabled,
-          reasoning_max_tokens: parseInt(reasoningMaxTokens) || 512,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.success) {
@@ -458,21 +459,35 @@ export default function OwnerProviders() {
             <Save className="h-4 w-4" /> {savingReasoning ? 'Saving...' : 'Save'}
           </button>
         </div>
-        <div className="space-y-4">
-          <label className="flex items-center gap-3 rounded-xl border border-white/10 p-4 cursor-pointer hover:bg-white/5 transition-colors">
+        <div className="space-y-3">
+          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${!reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
             <input
-              type="checkbox"
-              checked={reasoningEnabled}
-              onChange={(e) => setReasoningEnabled(e.target.checked)}
-              className="h-5 w-5 rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
+              type="radio"
+              name="reasoning"
+              checked={!reasoningEnabled}
+              onChange={() => { setReasoningEnabled(false); setReasoningMaxTokens('0'); }}
+              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
             />
             <div>
-              <span className="text-sm font-medium text-white">Enable AI reasoning</span>
-              <p className="text-xs text-white/30 mt-0.5">When enabled, the model thinks internally before answering for better accuracy. Reasoning is always stripped from customer-facing output.</p>
+              <span className="text-sm font-medium text-white">Reasoning OFF</span>
+              <p className="text-xs text-white/30 mt-0.5">No internal thinking, fastest and cheapest responses</p>
+            </div>
+          </label>
+          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
+            <input
+              type="radio"
+              name="reasoning"
+              checked={reasoningEnabled}
+              onChange={() => { setReasoningEnabled(true); if (!reasoningMaxTokens || reasoningMaxTokens === '0') setReasoningMaxTokens('512'); }}
+              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">Reasoning ON</span>
+              <p className="text-xs text-white/30 mt-0.5">Model thinks internally for better accuracy. Reasoning stripped from customer output.</p>
             </div>
           </label>
           {reasoningEnabled && (
-            <div>
+            <div className="pl-4">
               <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
                 <Brain className="h-3 w-3 text-purple-400" /> Reasoning Max Tokens
               </label>

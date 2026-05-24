@@ -74,9 +74,15 @@ export async function PUT(request: NextRequest) {
 
     for (const key of AI_NUMERIC_KEYS) {
       if (body[key] !== undefined) {
-        const val = typeof body[key] === 'string'
-          ? key === 'default_temperature' ? parseFloat(body[key]) || 0.7 : parseInt(body[key]) || 10
-          : key === 'default_temperature' ? Number(body[key]) || 0.7 : Number(body[key]) || 10;
+        const raw = body[key];
+        let val: number;
+        if (key === 'reasoning_max_tokens') {
+          val = typeof raw === 'string' ? parseInt(raw) || 0 : Number(raw) || 0;
+        } else if (key === 'default_temperature') {
+          val = typeof raw === 'string' ? parseFloat(raw) || 0.7 : Number(raw) || 0.7;
+        } else {
+          val = typeof raw === 'string' ? parseInt(raw) || 10 : Number(raw) || 10;
+        }
         const { error } = await supabase
           .from('platform_settings')
           .upsert({ key, value: val }, { onConflict: 'key' });
