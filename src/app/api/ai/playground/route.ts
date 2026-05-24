@@ -43,20 +43,24 @@ export async function POST(request: NextRequest) {
     ]);
 
     const profile = profileRes.data;
-    const [providerRes, configRes, reasoningCfg, reasoningPromptCfg, memoryCountCfg] = await Promise.all([
+    const [providerRes, configRes, reasoningCfg, reasoningPromptCfg, memoryCountCfg, tempCfg, tokensCfg] = await Promise.all([
       adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
       adminDb.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
     ]) as any;
     const defaultMemoryCount = memoryCountCfg?.data?.value ? Number(memoryCountCfg.data.value) : 10;
+    const defaultTemperature = tempCfg?.data?.value ? Number(tempCfg.data.value) : 0.7;
+    const defaultMaxTokens = tokensCfg?.data?.value ? Number(tokensCfg.data.value) : 500;
 
     const aiSettings = aiSettingsRes.data || {
       model: 'openai/gpt-4o-mini',
       system_prompt: null,
-      temperature: 0.7,
-      max_tokens: 500,
+      temperature: defaultTemperature,
+      max_tokens: defaultMaxTokens,
       fallback_response: '',
       greeting_enabled: true,
       greeting_message: 'Hello! How can we help you today?',
@@ -191,8 +195,8 @@ export async function POST(request: NextRequest) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: messageText },
       ],
-      temperature: aiSettings.temperature || 0.7,
-      max_tokens: aiSettings.max_tokens || 500,
+      temperature: aiSettings.temperature ?? defaultTemperature,
+      max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       tools,
     }, providerConfig, !reasoningEnabled);
 
@@ -246,8 +250,8 @@ export async function POST(request: NextRequest) {
             { role: 'assistant', content: null, tool_calls: [toolCall] },
             { role: 'tool', tool_call_id: toolCall.id, content: toolResult },
           ],
-          temperature: aiSettings.temperature || 0.7,
-          max_tokens: aiSettings.max_tokens || 500,
+          temperature: aiSettings.temperature ?? defaultTemperature,
+          max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
         }, providerConfig, !reasoningEnabled);
 
         finalReply = followUp.choices?.[0]?.message?.content || 'No response generated.';

@@ -9,16 +9,6 @@ import { Save, Bot, Sliders, Clock, Shield, Loader2, CheckCircle, ShoppingCart, 
 import { usePageTitle } from '@/lib/use-page-title';
 import type { AISettings } from '@/types';
 
-const MODELS = [
-  'openai/gpt-3.5-turbo',
-  'openai/gpt-4o-mini',
-  'openai/gpt-4o',
-  'anthropic/claude-3-haiku',
-  'anthropic/claude-3-sonnet',
-  'google/gemini-pro',
-  'meta-llama/llama-3-70b-instruct',
-];
-
 export default function SettingsPage() {
   usePageTitle('AI Settings');
   const [settings, setSettings] = useState<AISettings | null>(null);
@@ -83,29 +73,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5 text-blue-600" /> AI Model</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Model</label>
-              <select className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:ring-2 focus:ring-blue-500/20" value={settings.model} onChange={(e) => update('model', e.target.value)}>
-                {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Temperature ({settings.temperature})</label>
-              <input type="range" min="0" max="2" step="0.1" value={settings.temperature} onChange={(e) => update('temperature', parseFloat(e.target.value))} className="w-full accent-blue-600" />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>Precise</span><span>Creative</span></div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Max Tokens per Response</label>
-              <Input type="number" value={settings.max_tokens} onChange={(e) => update('max_tokens', parseInt(e.target.value))} />
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Sliders className="h-5 w-5 text-purple-600" /> Behavior</CardTitle>

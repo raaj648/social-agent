@@ -6,7 +6,7 @@ import { encrypt } from '@/lib/crypto';
 export const dynamic = 'force-dynamic';
 
 const AI_KEYS = ['default_model', 'default_free_credits', 'default_credits_expiry_days', 'openrouter_key'];
-const AI_NUMERIC_KEYS = new Set(['default_conversation_memory_count']);
+const AI_NUMERIC_KEYS = ['default_conversation_memory_count', 'default_temperature', 'default_max_tokens'];
 
 export async function GET() {
   try {
@@ -30,6 +30,8 @@ export async function GET() {
       reasoning_enabled: reasoningEnabledRes.data?.value === true || reasoningEnabledRes.data?.value === 'true' ? true : false,
       reasoning_suppression_prompt: reasoningPromptRes.data?.value as string || '',
       default_conversation_memory_count: settingsRes.data?.find(s => s.key === 'default_conversation_memory_count')?.value || 10,
+      default_temperature: settingsRes.data?.find(s => s.key === 'default_temperature')?.value || 0.7,
+      default_max_tokens: settingsRes.data?.find(s => s.key === 'default_max_tokens')?.value || 500,
     };
 
     const settings = settingsRes.data || [];
@@ -78,14 +80,16 @@ export async function PUT(request: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    if (body.default_conversation_memory_count !== undefined) {
-      const val = typeof body.default_conversation_memory_count === 'string'
-        ? parseInt(body.default_conversation_memory_count) || 10
-        : Number(body.default_conversation_memory_count) || 10;
-      const { error } = await supabase
-        .from('platform_settings')
-        .upsert({ key: 'default_conversation_memory_count', value: val }, { onConflict: 'key' });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    for (const key of AI_NUMERIC_KEYS) {
+      if (body[key] !== undefined) {
+        const val = typeof body[key] === 'string'
+          ? key === 'default_temperature' ? parseFloat(body[key]) || 0.7 : parseInt(body[key]) || 10
+          : key === 'default_temperature' ? Number(body[key]) || 0.7 : Number(body[key]) || 10;
+        const { error } = await supabase
+          .from('platform_settings')
+          .upsert({ key, value: val }, { onConflict: 'key' });
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
 
     for (const key of AI_KEYS) {

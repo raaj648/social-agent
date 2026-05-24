@@ -116,14 +116,18 @@ export async function handleAIResponse(
     let reasoningEnabled = true;
     let reasoningSuppressionPrompt = '';
 
-    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }] = await Promise.all([
+    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }] = await Promise.all([
       supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
     ]);
     const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
+    const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
+    const defaultMaxTokens = tokensCfg?.value ? Number(tokensCfg.value) : 500;
 
     if (activeProvider) {
       try {
@@ -318,8 +322,8 @@ export async function handleAIResponse(
     const response = await withRetry(() => createCompletion({
       model: activeModel,
       messages: completionMessages,
-      temperature: settings.temperature || 0.7,
-      max_tokens: settings.max_tokens || 500,
+      temperature: settings.temperature ?? defaultTemperature,
+      max_tokens: settings.max_tokens ?? defaultMaxTokens,
       tools,
     }, providerConfig, !reasoningEnabled));
 
@@ -403,8 +407,8 @@ export async function handleAIResponse(
       const followUp = await withRetry(() => createCompletion({
         model: activeModel,
         messages: followUpMessages,
-        temperature: settings.temperature || 0.7,
-        max_tokens: settings.max_tokens || 500,
+        temperature: settings.temperature ?? defaultTemperature,
+        max_tokens: settings.max_tokens ?? defaultMaxTokens,
       }, providerConfig, !reasoningEnabled));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;

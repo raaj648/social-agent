@@ -291,8 +291,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     aiSettings = {
       is_active: true,
       model: 'openai/gpt-4o-mini',
-      temperature: 0.7,
-      max_tokens: 500,
+      temperature: undefined as unknown as number,
+      max_tokens: undefined as unknown as number,
       fallback_response: '',
       conversation_memory_count: undefined as unknown as number,
       keywords_blacklist: [],
@@ -403,14 +403,18 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   let reasoningEnabled = true;
   let reasoningSuppressionPrompt = '';
 
-  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }] = await Promise.all([
+  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }] = await Promise.all([
     supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+    supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
+    supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
   ]);
   const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
+  const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
+  const defaultMaxTokens = tokensCfg?.value ? Number(tokensCfg.value) : 500;
 
   if (activeProvider) {
     try {
@@ -561,8 +565,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     const response = await withRetry(() => createCompletion({
       model,
       messages: completionMessages,
-      temperature: aiSettings.temperature || 0.7,
-      max_tokens: aiSettings.max_tokens || 500,
+      temperature: aiSettings.temperature ?? defaultTemperature,
+      max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       tools,
     }, providerConfig, !reasoningEnabled));
 
@@ -655,8 +659,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       const followUp = await withRetry(() => createCompletion({
         model,
         messages: followUpMessages,
-        temperature: aiSettings.temperature || 0.7,
-        max_tokens: aiSettings.max_tokens || 500,
+        temperature: aiSettings.temperature ?? defaultTemperature,
+        max_tokens: aiSettings.max_tokens ?? defaultMaxTokens,
       }, providerConfig));
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
