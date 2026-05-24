@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/crypto';
-import { getMetaAppSecret, getWebhookVerifyToken, getAppUrl } from '@/lib/credentials';
+import { getMetaAppSecret, getWebhookVerifyToken } from '@/lib/credentials';
 import { processWebhookMessage } from '@/lib/meta/webhook';
 
 export async function GET(request: NextRequest) {
@@ -35,18 +35,15 @@ export async function POST(request: NextRequest) {
 
     const body = JSON.parse(rawBody);
 
-    if (body.object === 'page' || body.object === 'instagram' || body.object === 'whatsapp_business_account') {
-      const processedInBatch = new Set<string>();
+    const processedInBatch = new Set<string>();
+
+    // Handle Facebook/Instagram webhook payloads
+    if (body.object === 'page' || body.object === 'instagram') {
+      const platform = body.object === 'instagram' ? 'instagram' : 'messenger';
       for (const entry of body.entry) {
         if (entry.messaging) {
           for (const event of entry.messaging) {
             if (!event.message?.text || !event.sender?.id) continue;
-
-            const platform = body.object === 'instagram'
-              ? 'instagram'
-              : body.object === 'whatsapp_business_account'
-                ? 'whatsapp'
-                : 'messenger';
 
             const msgId = event.message?.mid;
             if (msgId) {
@@ -65,6 +62,44 @@ export async function POST(request: NextRequest) {
               recipientId: event.recipient?.id || entry.id,
               timestamp: event.timestamp || Date.now(),
             });
+          }
+        }
+      }
+    }
+
+    // Handle WhatsApp webhook payloads (different JSON structure)
+    if (body.object === 'whatsapp_business_account') {
+      for (const entry of body.entry) {
+        if (entry.changes) {
+          for (const change of entry.changes) {
+            const value = change.value;
+            if (!value?.messages) continue;
+
+            const recipientId = value.metadata?.phone_number_id || entry.id;
+            const senderName = value.contacts?.[0]?.profile?.name;
+
+            for (const msg of value.messages) {
+              if (msg.id) {
+                if (processedInBatch.has(msg.id)) {
+                  console.log(`[webhook] Skipping duplicate wamid ${msg.id} in same batch`);
+                  continue;
+                }
+                processedInBatch.add(msg.id);
+              }
+
+              const textBody = msg.text?.body || msg.text_body;
+              if (!textBody || !msg.from) continue;
+
+              await processWebhookMessage({
+                platform: 'whatsapp',
+                senderId: msg.from,
+                messageText: textBody,
+                platformMsgId: msg.id,
+                recipientId,
+                timestamp: msg.timestamp ? Number(msg.timestamp) * 1000 : Date.now(),
+                senderName,
+              });
+            }
           }
         }
       }

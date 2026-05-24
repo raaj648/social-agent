@@ -13,6 +13,7 @@ interface WebhookPayload {
   platformMsgId?: string;
   recipientId: string;
   timestamp: number;
+  senderName?: string;
 }
 
 async function findChannel(supabase: any, platform: string, externalId: string) {
@@ -96,7 +97,7 @@ async function findOrCreateConversation(
 
 export async function processWebhookMessage(payload: WebhookPayload): Promise<void> {
   const supabase = await createAdminClient();
-  const { platform, senderId, messageText, platformMsgId, recipientId } = payload;
+  const { platform, senderId, messageText, platformMsgId, recipientId, senderName } = payload;
   console.log(`[webhook] Received ${platform} message from ${senderId}: "${messageText?.substring(0, 100)}"`);
 
   const channelFieldMap: Record<string, string> = {
@@ -187,6 +188,10 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         if (profile) {
           profileName = profile.name;
           profilePic = profile.profile_picture_url;
+        }
+      } else if (platform === 'whatsapp') {
+        if (senderName) {
+          profileName = senderName;
         }
       }
       if (profileName || profilePic) {
