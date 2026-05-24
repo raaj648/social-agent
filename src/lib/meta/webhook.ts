@@ -260,6 +260,22 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     aiSettings = settings;
   }
 
+  // Fire sender actions early: mark_seen immediately, typing_on after 500ms stagger (prevents Meta overlap bug)
+  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
+    sendSenderAction(senderId, accessToken, 'mark_seen')
+      .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
+    setTimeout(() => {
+      sendSenderAction(senderId, accessToken, 'typing_on')
+        .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
+    }, 500);
+  } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
+    const waChannel = channel as any;
+    if (waChannel.phone_number_id) {
+      sendWhatsAppTypingAndRead(waChannel.phone_number_id, platformMsgId, accessToken)
+        .then(ok => { if (!ok) console.error(`[webhook] sendWhatsAppTypingAndRead failed for ${senderId}`); });
+    }
+  }
+
   // If we have a business_id on the channel but not on aiSettings, try to get business-scoped settings
   if (channel.business_id && (!aiSettings?.business_id)) {
     const { data: bizSettings } = await supabase
@@ -519,23 +535,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   const tools = baseTools.length > 0 ? baseTools : undefined;
 
   const model = activeModel;
-
-  // Staggered sender actions: mark_seen → 500ms → typing_on → 3000ms (prevents Meta API overlap bug)
-  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
-    const markOk = await sendSenderAction(senderId, accessToken, 'mark_seen');
-    if (!markOk) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const typeOk = await sendSenderAction(senderId, accessToken, 'typing_on');
-    if (!typeOk) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-  } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
-    const waChannel = channel as any;
-    if (waChannel.phone_number_id) {
-      const ok = await sendWhatsAppTypingAndRead(waChannel.phone_number_id, platformMsgId, accessToken);
-      if (!ok) console.error(`[webhook] sendWhatsAppTypingAndRead failed for ${senderId}`);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  }
 
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${model}, Provider: ${providerConfig?.baseUrl || 'default'}, Message: "${messageText.substring(0, 50)}"`);
 
