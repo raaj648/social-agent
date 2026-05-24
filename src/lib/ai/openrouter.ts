@@ -38,7 +38,8 @@ const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 export async function createCompletion(
   params: CompletionParams,
   providerConfig?: ProviderConfig,
-  suppressReasoning?: boolean
+  suppressReasoning?: boolean,
+  reasoningMaxTokens?: number
 ): Promise<OpenRouterResponse> {
   const apiKey = providerConfig?.apiKey;
   if (!apiKey) throw new Error('AI_API_KEY is not set');
@@ -52,10 +53,13 @@ export async function createCompletion(
     max_tokens: params.max_tokens ?? 500,
   };
 
-  if (suppressReasoning) {
-    if (baseUrl === DEFAULT_BASE_URL || baseUrl.includes('openrouter.ai')) {
-      body.include_reasoning = false;
-      body.transforms = ['remove-reasoning'];
+  if (baseUrl === DEFAULT_BASE_URL || baseUrl.includes('openrouter.ai')) {
+    body.include_reasoning = false;
+    body.transforms = ['remove-reasoning'];
+    if (suppressReasoning) {
+      body.reasoning = { max_tokens: 0 };
+    } else {
+      body.reasoning = { max_tokens: reasoningMaxTokens ?? 512 };
     }
   }
 
@@ -83,7 +87,7 @@ export async function createCompletion(
   const data: OpenRouterResponse = await res.json();
 
   // Strip reasoning patterns from content as a safety net
-  if (data.choices && suppressReasoning) {
+  if (data.choices) {
     for (const choice of data.choices) {
       if (choice?.message?.content) {
         choice.message.content = choice.message.content

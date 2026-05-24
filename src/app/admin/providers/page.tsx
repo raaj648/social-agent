@@ -40,7 +40,7 @@ export default function OwnerProviders() {
   const [defaultCreditsExpiryDays, setDefaultCreditsExpiryDays] = useState('30');
 
   const [reasoningEnabled, setReasoningEnabled] = useState(false);
-  const [reasoningSuppressionPrompt, setReasoningSuppressionPrompt] = useState('');
+  const [reasoningMaxTokens, setReasoningMaxTokens] = useState('512');
   const [savingReasoning, setSavingReasoning] = useState(false);
   const [savingAiDefaults, setSavingAiDefaults] = useState(false);
   const [defaultConvMemoryCount, setDefaultConvMemoryCount] = useState('10');
@@ -81,7 +81,7 @@ export default function OwnerProviders() {
     if (settingsData.default_temperature !== undefined) setDefaultTemperature(String(settingsData.default_temperature));
     if (settingsData.default_max_tokens !== undefined) setDefaultMaxTokens(String(settingsData.default_max_tokens));
     if (settingsData.reasoning_enabled !== undefined) setReasoningEnabled(Boolean(settingsData.reasoning_enabled));
-    if (settingsData.reasoning_suppression_prompt !== undefined) setReasoningSuppressionPrompt(String(settingsData.reasoning_suppression_prompt));
+    if (settingsData.reasoning_max_tokens !== undefined) setReasoningMaxTokens(String(settingsData.reasoning_max_tokens));
   }
 
   function openAdd() {
@@ -150,7 +150,7 @@ export default function OwnerProviders() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reasoning_enabled: reasoningEnabled,
-          reasoning_suppression_prompt: reasoningSuppressionPrompt,
+          reasoning_max_tokens: parseInt(reasoningMaxTokens) || 512,
         }),
       });
       const data = await res.json();
@@ -447,7 +447,7 @@ export default function OwnerProviders() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white">AI Reasoning</h3>
-              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is shown in responses</p>
+              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is enabled internally</p>
             </div>
           </div>
           <button
@@ -467,23 +467,27 @@ export default function OwnerProviders() {
               className="h-5 w-5 rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
             />
             <div>
-              <span className="text-sm font-medium text-white">Enable AI reasoning output</span>
-              <p className="text-xs text-white/30 mt-0.5">When disabled, chain-of-thought reasoning is suppressed and a custom suppression prompt is injected into the system prompt</p>
+              <span className="text-sm font-medium text-white">Enable AI reasoning</span>
+              <p className="text-xs text-white/30 mt-0.5">When enabled, the model thinks internally before answering for better accuracy. Reasoning is always stripped from customer-facing output.</p>
             </div>
           </label>
-          <div>
-            <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
-              <Brain className="h-3 w-3 text-purple-400" /> Reasoning Suppression Prompt
-            </label>
-            <textarea
-              value={reasoningSuppressionPrompt}
-              onChange={(e) => setReasoningSuppressionPrompt(e.target.value)}
-              placeholder="Enter instructions that tell the AI to suppress chain-of-thought reasoning..."
-              rows={4}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
-            />
-            <p className="text-xs text-white/30 mt-1">This prompt is appended to the system prompt when reasoning is disabled</p>
-          </div>
+          {reasoningEnabled && (
+            <div>
+              <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
+                <Brain className="h-3 w-3 text-purple-400" /> Reasoning Max Tokens
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={4096}
+                step={64}
+                value={reasoningMaxTokens}
+                onChange={(e) => setReasoningMaxTokens(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50"
+              />
+              <p className="text-xs text-white/30 mt-1">Token budget for internal reasoning (higher = better quality but more tokens consumed)</p>
+            </div>
+          )}
         </div>
       </div>
 

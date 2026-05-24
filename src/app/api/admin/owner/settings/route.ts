@@ -6,7 +6,7 @@ import { encrypt } from '@/lib/crypto';
 export const dynamic = 'force-dynamic';
 
 const AI_KEYS = ['default_model', 'default_free_credits', 'default_credits_expiry_days', 'openrouter_key'];
-const AI_NUMERIC_KEYS = ['default_conversation_memory_count', 'default_temperature', 'default_max_tokens'];
+const AI_NUMERIC_KEYS = ['default_conversation_memory_count', 'default_temperature', 'default_max_tokens', 'reasoning_max_tokens'];
 
 export async function GET() {
   try {
@@ -18,20 +18,19 @@ export async function GET() {
 
     const supabase = await createAdminClient();
 
-    const [configRes, reasoningEnabledRes, reasoningPromptRes, settingsRes] = await Promise.all([
+    const [configRes, reasoningEnabledRes, settingsRes] = await Promise.all([
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
       supabase.from('platform_settings').select('key, value'),
     ]);
 
     const result: Record<string, unknown> = {
       master_prompt: configRes.data?.value as string || null,
       reasoning_enabled: reasoningEnabledRes.data?.value === true || reasoningEnabledRes.data?.value === 'true' ? true : false,
-      reasoning_suppression_prompt: reasoningPromptRes.data?.value as string || '',
       default_conversation_memory_count: settingsRes.data?.find(s => s.key === 'default_conversation_memory_count')?.value || 10,
       default_temperature: settingsRes.data?.find(s => s.key === 'default_temperature')?.value || 0.7,
       default_max_tokens: settingsRes.data?.find(s => s.key === 'default_max_tokens')?.value || 500,
+      reasoning_max_tokens: settingsRes.data?.find(s => s.key === 'reasoning_max_tokens')?.value || 512,
     };
 
     const settings = settingsRes.data || [];
@@ -70,13 +69,6 @@ export async function PUT(request: NextRequest) {
       const { error } = await supabase
         .from('platform_settings')
         .upsert({ key: 'reasoning_enabled', value: Boolean(body.reasoning_enabled) }, { onConflict: 'key' });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    if (body.reasoning_suppression_prompt !== undefined) {
-      const { error } = await supabase
-        .from('platform_settings')
-        .upsert({ key: 'reasoning_suppression_prompt', value: String(body.reasoning_suppression_prompt) }, { onConflict: 'key' });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
