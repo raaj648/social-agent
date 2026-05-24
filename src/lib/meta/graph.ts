@@ -107,17 +107,18 @@ export async function getMessengerUserProfile(
 export async function getInstagramUserProfile(
   senderId: string,
   igAccessToken: string
-): Promise<{ name: string; profile_picture_url: string } | null> {
+): Promise<{ name: string; username: string; profile_pic_url: string } | null> {
   try {
     const url = new URL(`${META_GRAPH_URL}/${senderId}`);
     url.searchParams.set('access_token', igAccessToken);
-    url.searchParams.set('fields', 'name,profile_picture_url');
+    url.searchParams.set('fields', 'name,username,profile_pic');
     const res = await fetch(url.toString());
     if (!res.ok) return null;
     const data = await res.json();
     return {
       name: data.name || senderId,
-      profile_picture_url: data.profile_picture_url || '',
+      username: data.username || '',
+      profile_pic_url: data.profile_pic || '',
     };
   } catch {
     return null;
@@ -154,6 +155,52 @@ export async function sendMessage(
     return false;
   }
   return true;
+}
+
+export async function sendSenderAction(
+  recipientId: string,
+  pageAccessToken: string,
+  action: 'mark_seen' | 'typing_on' | 'typing_off',
+  platform: 'messenger' | 'instagram' = 'messenger'
+): Promise<boolean> {
+  try {
+    const url = new URL(`${META_GRAPH_URL}/me/messages`);
+    url.searchParams.set('access_token', pageAccessToken);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        sender_action: action,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function markWhatsAppMessageRead(
+  phoneNumberId: string,
+  messageId: string,
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const url = new URL(`${META_GRAPH_URL}/${phoneNumberId}/messages`);
+    url.searchParams.set('access_token', accessToken);
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function sendInstagramMessage(

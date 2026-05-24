@@ -1,6 +1,6 @@
 ﻿import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile } from '@/lib/meta/graph';
+import { sendMessage, sendWhatsAppMessage, getMessengerUserProfile, getInstagramUserProfile, sendSenderAction, markWhatsAppMessageRead } from '@/lib/meta/graph';
 import { createCompletion } from '@/lib/ai/openrouter';
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
@@ -187,7 +187,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         const profile = await getInstagramUserProfile(senderId, token);
         if (profile) {
           profileName = profile.name;
-          profilePic = profile.profile_picture_url;
+          profilePic = profile.profile_pic_url;
         }
       } else if (platform === 'whatsapp') {
         if (senderName) {
@@ -258,6 +258,20 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       .is('instagram_id', null)
       .maybeSingle();
     aiSettings = settings;
+  }
+
+  // Mark as seen / read immediately
+  if (platformMsgId && accessToken) {
+    if (platform === 'whatsapp') {
+      const waChannel = channel as any;
+      if (waChannel.phone_number_id) {
+        markWhatsAppMessageRead(waChannel.phone_number_id, platformMsgId, accessToken)
+          .catch(() => {});
+      }
+    } else if (platform === 'messenger' || platform === 'instagram') {
+      sendSenderAction(senderId, accessToken, 'mark_seen', platform as 'messenger' | 'instagram')
+        .catch(() => {});
+    }
   }
 
   // If we have a business_id on the channel but not on aiSettings, try to get business-scoped settings
@@ -365,6 +379,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
         sent_via_ai: true,
       });
     }
+  }
+
+  // Show typing indicator (Messenger/Instagram only)
+  if ((platform === 'messenger' || platform === 'instagram') && accessToken) {
+    sendSenderAction(senderId, accessToken, 'typing_on', platform as 'messenger' | 'instagram')
+      .catch(() => {});
   }
 
   // Atomic credit deduction
