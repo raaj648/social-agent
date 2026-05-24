@@ -307,47 +307,129 @@ export default function OwnerProviders() {
               <thead>
                 <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
                   <th className="pb-3 pr-4 font-medium">Name</th>
+                  <th className="pb-3 pr-4 font-medium">Type</th>
                   <th className="pb-3 pr-4 font-medium">Base URL</th>
-                  <th className="pb-3 pr-4 font-medium">API Key</th>
                   <th className="pb-3 pr-4 font-medium">Model</th>
+                  <th className="pb-3 pr-4 font-medium">Reasoning</th>
                   <th className="pb-3 pr-4 font-medium">Status</th>
                   <th className="pb-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {providers.map((p) => (
-                  <tr key={p.id} className="border-b border-white/5 text-white/70">
-                    <td className="py-3 pr-4 font-medium text-white">{p.name}</td>
-                    <td className="py-3 pr-4 text-xs text-white/50">{p.base_url}</td>
-                    <td className="py-3 pr-4">
-                      <code className="rounded bg-white/5 px-2 py-0.5 text-xs text-violet-400">{p.api_key}</code>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className="rounded bg-white/5 px-2 py-0.5 text-xs">{p.default_model}</span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      {p.is_active ? (
-                        <span className="flex items-center gap-1 text-xs text-emerald-400"><CheckCircle className="h-3 w-3" /> Active</span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-xs text-white/30"><XCircle className="h-3 w-3" /> Inactive</span>
-                      )}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(p)} className="rounded-lg bg-white/5 p-2 text-white/40 transition-colors hover:bg-violet-500/20 hover:text-violet-400" title="Edit">
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button onClick={() => handleDelete(p.id)} className="rounded-lg bg-white/5 p-2 text-white/40 transition-colors hover:bg-red-500/20 hover:text-red-400" title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                  {providers.map((p) => {
+                    const typeColor = p.provider_type === 'openrouter' ? 'text-violet-400 bg-violet-500/10 border-violet-500/20' :
+                      p.provider_type === 'deepseek' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                      'text-white/50 bg-white/5 border-white/10';
+                    return (
+                    <tr key={p.id} className="border-b border-white/5 text-white/70">
+                      <td className="py-3 pr-4 font-medium text-white">{p.name}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${typeColor}`}>
+                          {p.provider_type || 'generic'}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-white/50 max-w-[180px] truncate" title={p.base_url}>{p.base_url}</td>
+                      <td className="py-3 pr-4">
+                        <span className="rounded bg-white/5 px-2 py-0.5 text-xs">{p.default_model}</span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        {p.reasoning_max_tokens ? (
+                          <span className="text-xs text-purple-400">{p.reasoning_max_tokens}</span>
+                        ) : (
+                          <span className="text-xs text-white/30">Default</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {p.is_active ? (
+                          <span className="flex items-center gap-1 text-xs text-emerald-400"><CheckCircle className="h-3 w-3" /> Active</span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-white/30"><XCircle className="h-3 w-3" /> Inactive</span>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(p)} className="rounded-lg bg-white/5 p-2 text-white/40 transition-colors hover:bg-violet-500/20 hover:text-violet-400" title="Edit">
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDelete(p.id)} className="rounded-lg bg-white/5 p-2 text-white/40 transition-colors hover:bg-red-500/20 hover:text-red-400" title="Delete">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         )}
+      </div>
+
+      {/* AI Reasoning */}
+      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+              <Brain className="h-5 w-5 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">AI Reasoning</h3>
+              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is enabled internally</p>
+            </div>
+          </div>
+          <button
+            onClick={handleSaveReasoning}
+            disabled={savingReasoning}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-purple-500 hover:to-pink-500 disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" /> {savingReasoning ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+        <div className="space-y-3">
+          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${!reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
+            <input
+              type="radio"
+              name="reasoning"
+              checked={!reasoningEnabled}
+              onChange={() => { setReasoningEnabled(false); setReasoningMaxTokens('0'); }}
+              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">Reasoning OFF</span>
+              <p className="text-xs text-white/30 mt-0.5">No internal thinking, fastest and cheapest responses</p>
+            </div>
+          </label>
+          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
+            <input
+              type="radio"
+              name="reasoning"
+              checked={reasoningEnabled}
+              onChange={() => { setReasoningEnabled(true); if (!reasoningMaxTokens || reasoningMaxTokens === '0') setReasoningMaxTokens('512'); }}
+              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">Reasoning ON</span>
+              <p className="text-xs text-white/30 mt-0.5">Model thinks internally for better accuracy. Reasoning stripped from customer output.</p>
+            </div>
+          </label>
+          {reasoningEnabled && (
+            <div className="pl-4">
+              <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
+                <Brain className="h-3 w-3 text-purple-400" /> Reasoning Max Tokens
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={4096}
+                step={64}
+                value={reasoningMaxTokens}
+                onChange={(e) => setReasoningMaxTokens(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50"
+              />
+              <p className="text-xs text-white/30 mt-1">Token budget for internal reasoning (higher = better quality but more tokens consumed)</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* AI Defaults */}
@@ -443,73 +525,6 @@ export default function OwnerProviders() {
         )}
       </div>
 
-      {/* AI Reasoning */}
-      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-              <Brain className="h-5 w-5 text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-white">AI Reasoning</h3>
-              <p className="text-xs text-white/40">Control whether AI chain-of-thought reasoning is enabled internally</p>
-            </div>
-          </div>
-          <button
-            onClick={handleSaveReasoning}
-            disabled={savingReasoning}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-purple-500 hover:to-pink-500 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" /> {savingReasoning ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-        <div className="space-y-3">
-          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${!reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
-            <input
-              type="radio"
-              name="reasoning"
-              checked={!reasoningEnabled}
-              onChange={() => { setReasoningEnabled(false); setReasoningMaxTokens('0'); }}
-              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
-            />
-            <div>
-              <span className="text-sm font-medium text-white">Reasoning OFF</span>
-              <p className="text-xs text-white/30 mt-0.5">No internal thinking, fastest and cheapest responses</p>
-            </div>
-          </label>
-          <label className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${reasoningEnabled ? 'border-purple-500/30 bg-purple-500/10' : 'border-white/10 hover:bg-white/5'}`}>
-            <input
-              type="radio"
-              name="reasoning"
-              checked={reasoningEnabled}
-              onChange={() => { setReasoningEnabled(true); if (!reasoningMaxTokens || reasoningMaxTokens === '0') setReasoningMaxTokens('512'); }}
-              className="h-4 w-4 border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30"
-            />
-            <div>
-              <span className="text-sm font-medium text-white">Reasoning ON</span>
-              <p className="text-xs text-white/30 mt-0.5">Model thinks internally for better accuracy. Reasoning stripped from customer output.</p>
-            </div>
-          </label>
-          {reasoningEnabled && (
-            <div className="pl-4">
-              <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
-                <Brain className="h-3 w-3 text-purple-400" /> Reasoning Max Tokens
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={4096}
-                step={64}
-                value={reasoningMaxTokens}
-                onChange={(e) => setReasoningMaxTokens(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50"
-              />
-              <p className="text-xs text-white/30 mt-1">Token budget for internal reasoning (higher = better quality but more tokens consumed)</p>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Test AI */}
       <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
         <div className="flex items-center justify-between mb-4">
@@ -523,13 +538,6 @@ export default function OwnerProviders() {
             </div>
           </div>
           {testMessages.length > 0 && (
-            <button onClick={() => setTestMessages([])} className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-white/40 hover:bg-white/5 transition-colors">
-              <Trash2 className="h-3 w-3" /> Clear
-            </button>
-          )}
-        </div>
-
-        {testMessages.length > 0 && (
           <div className="mb-4 max-h-80 overflow-y-auto space-y-3 rounded-xl bg-white/5 p-4">
             {testMessages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -599,6 +607,7 @@ export default function OwnerProviders() {
           </button>
         </div>
         <p className="mt-2 text-[10px] text-white/20">Select a provider above or use the default OpenRouter key. No credits deducted.</p>
+      </div>
       </div>
 
       {/* Add/Edit Modal */}
