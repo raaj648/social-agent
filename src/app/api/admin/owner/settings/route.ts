@@ -6,6 +6,7 @@ import { encrypt } from '@/lib/crypto';
 export const dynamic = 'force-dynamic';
 
 const AI_KEYS = ['default_model', 'default_free_credits', 'default_credits_expiry_days', 'openrouter_key'];
+const AI_NUMERIC_KEYS = new Set(['default_conversation_memory_count']);
 
 export async function GET() {
   try {
@@ -28,6 +29,7 @@ export async function GET() {
       master_prompt: configRes.data?.value as string || null,
       reasoning_enabled: reasoningEnabledRes.data?.value === true || reasoningEnabledRes.data?.value === 'true' ? true : false,
       reasoning_suppression_prompt: reasoningPromptRes.data?.value as string || '',
+      default_conversation_memory_count: settingsRes.data?.find(s => s.key === 'default_conversation_memory_count')?.value || 10,
     };
 
     const settings = settingsRes.data || [];
@@ -73,6 +75,16 @@ export async function PUT(request: NextRequest) {
       const { error } = await supabase
         .from('platform_settings')
         .upsert({ key: 'reasoning_suppression_prompt', value: String(body.reasoning_suppression_prompt) }, { onConflict: 'key' });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (body.default_conversation_memory_count !== undefined) {
+      const val = typeof body.default_conversation_memory_count === 'string'
+        ? parseInt(body.default_conversation_memory_count) || 10
+        : Number(body.default_conversation_memory_count) || 10;
+      const { error } = await supabase
+        .from('platform_settings')
+        .upsert({ key: 'default_conversation_memory_count', value: val }, { onConflict: 'key' });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

@@ -22,7 +22,7 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   model: 'openai/gpt-4o-mini',
   temperature: 0.7,
   max_tokens: 500,
-  conversation_memory_count: 10,
+  conversation_memory_count: undefined as unknown as number,
   system_prompt: null,
   greeting_message: null,
   greeting_enabled: false,
@@ -200,14 +200,12 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
       .eq('user_id', matchedBot.user_id)
       .is('page_id', null)
       .is('instagram_id', null)
-      .is('telegram_id', null)
       .maybeSingle();
     aiSettings = globalSettings;
   }
 
-  // If still no AI settings, use defaults (like Meta webhook does)
+  // If still no AI settings, use defaults
   if (!aiSettings) {
-    console.warn('Telegram: no AI settings found, using defaults');
     aiSettings = { ...DEFAULT_AI_SETTINGS, user_id: matchedBot.user_id };
   }
 

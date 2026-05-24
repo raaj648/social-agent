@@ -294,7 +294,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       temperature: 0.7,
       max_tokens: 500,
       fallback_response: '',
-      conversation_memory_count: 10,
+      conversation_memory_count: undefined as unknown as number,
       keywords_blacklist: [],
       business_hours_only: false,
       greeting_enabled: false,
@@ -403,12 +403,14 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   let reasoningEnabled = true;
   let reasoningSuppressionPrompt = '';
 
-  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }] = await Promise.all([
+  const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }] = await Promise.all([
     supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
     supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
+    supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
   ]);
+  const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
 
   if (activeProvider) {
     try {
@@ -449,7 +451,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     .select('role, content')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
-    .limit(aiSettings.conversation_memory_count || 10);
+    .limit(aiSettings.conversation_memory_count ?? defaultMemoryCount);
 
   const businessInfo = {
     name: user.business_name || user.full_name || 'Business',
@@ -472,7 +474,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
   const conversationHistory = buildConversationContext(
     (recentMessages || []).reverse(),
-    aiSettings.conversation_memory_count || 10
+    aiSettings.conversation_memory_count ?? defaultMemoryCount
   );
 
   const baseTools: Array<{

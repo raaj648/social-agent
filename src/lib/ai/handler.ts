@@ -116,12 +116,14 @@ export async function handleAIResponse(
     let reasoningEnabled = true;
     let reasoningSuppressionPrompt = '';
 
-    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }] = await Promise.all([
+    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: reasoningPromptCfg }, { data: memoryCountCfg }] = await Promise.all([
       supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
       supabase.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
     ]);
+    const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
 
     if (activeProvider) {
       try {
@@ -198,7 +200,7 @@ export async function handleAIResponse(
       .select('role, content')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
-      .limit(settings.conversation_memory_count || 10);
+      .limit(settings.conversation_memory_count ?? defaultMemoryCount);
 
     // Business info
     const { data: userData } = await supabase
@@ -231,7 +233,7 @@ export async function handleAIResponse(
     // Build conversation history
     const conversationHistory = buildConversationContext(
       (recentMessages || []).reverse(),
-      settings.conversation_memory_count || 10
+      settings.conversation_memory_count ?? defaultMemoryCount
     );
 
     // Prepare completion messages

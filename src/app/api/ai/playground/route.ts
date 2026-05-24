@@ -43,6 +43,15 @@ export async function POST(request: NextRequest) {
     ]);
 
     const profile = profileRes.data;
+    const [providerRes, configRes, reasoningCfg, reasoningPromptCfg, memoryCountCfg] = await Promise.all([
+      adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
+      adminDb.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+    ]) as any;
+    const defaultMemoryCount = memoryCountCfg?.data?.value ? Number(memoryCountCfg.data.value) : 10;
+
     const aiSettings = aiSettingsRes.data || {
       model: 'openai/gpt-4o-mini',
       system_prompt: null,
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
       fallback_response: '',
       greeting_enabled: true,
       greeting_message: 'Hello! How can we help you today?',
-      conversation_memory_count: 10,
+      conversation_memory_count: defaultMemoryCount,
       is_active: true,
     };
 
@@ -60,13 +69,6 @@ export async function POST(request: NextRequest) {
     let masterPrompt: string | null = null;
     let reasoningEnabled = true;
     let reasoningSuppressionPrompt = '';
-
-    const [providerRes, configRes, reasoningCfg, reasoningPromptCfg] = await Promise.all([
-      adminDb.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
-      adminDb.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
-      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
-      adminDb.from('platform_settings').select('value').eq('key', 'reasoning_suppression_prompt').maybeSingle(),
-    ]) as any;
 
     if (!providerRes.error && providerRes.data) {
       try {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   Brain, Plus, RefreshCw, Trash2, Edit3, Save,
-  CheckCircle, XCircle, Globe, Key, Cpu, Users,
+  CheckCircle, XCircle, Globe, Key, Cpu, Users, MessageSquare,
   AlertCircle, Send, Loader2, Bot,
 } from 'lucide-react';
 
@@ -43,6 +43,7 @@ export default function OwnerProviders() {
   const [reasoningSuppressionPrompt, setReasoningSuppressionPrompt] = useState('');
   const [savingReasoning, setSavingReasoning] = useState(false);
   const [savingAiDefaults, setSavingAiDefaults] = useState(false);
+  const [defaultConvMemoryCount, setDefaultConvMemoryCount] = useState('10');
 
   const [testProviderId, setTestProviderId] = useState('');
   const [testModel, setTestModel] = useState('openai/gpt-4o-mini');
@@ -74,6 +75,7 @@ export default function OwnerProviders() {
     setMasterPrompt(settingsData.master_prompt || '');
     if (settingsData.default_free_credits !== undefined) setDefaultFreeCredits(String(settingsData.default_free_credits));
     if (settingsData.default_credits_expiry_days !== undefined) setDefaultCreditsExpiryDays(String(settingsData.default_credits_expiry_days));
+    if (settingsData.default_conversation_memory_count !== undefined) setDefaultConvMemoryCount(String(settingsData.default_conversation_memory_count));
     if (settingsData.reasoning_enabled !== undefined) setReasoningEnabled(Boolean(settingsData.reasoning_enabled));
     if (settingsData.reasoning_suppression_prompt !== undefined) setReasoningSuppressionPrompt(String(settingsData.reasoning_suppression_prompt));
   }
@@ -189,6 +191,7 @@ export default function OwnerProviders() {
       const body: Record<string, unknown> = {
         default_free_credits: parseInt(defaultFreeCredits) || 50,
         default_credits_expiry_days: parseInt(defaultCreditsExpiryDays) || 30,
+        default_conversation_memory_count: parseInt(defaultConvMemoryCount) || 10,
       };
 
       const res = await fetch('/api/admin/owner/settings', {
@@ -353,7 +356,7 @@ export default function OwnerProviders() {
             <Save className="h-4 w-4" /> {savingAiDefaults ? 'Saving...' : 'Save'}
           </button>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
               <Users className="h-3 w-3 text-green-400" /> Default Free Credits
@@ -369,6 +372,14 @@ export default function OwnerProviders() {
             <input type="number" min={0} value={defaultCreditsExpiryDays} onChange={(e) => setDefaultCreditsExpiryDays(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
             <p className="text-xs text-white/30 mt-1">Days until free credits expire (0 = no expiry)</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
+              <MessageSquare className="h-3 w-3 text-blue-400" /> Conversation Memory
+            </label>
+            <input type="number" min={1} max={100} value={defaultConvMemoryCount} onChange={(e) => setDefaultConvMemoryCount(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
+            <p className="text-xs text-white/30 mt-1">Number of recent messages AI remembers (all users)</p>
           </div>
         </div>
       </div>

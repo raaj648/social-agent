@@ -120,11 +120,6 @@ export default function SettingsPage() {
               <textarea className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20" value={settings.fallback_response} onChange={(e) => update('fallback_response', e.target.value)} placeholder="Leave empty to send nothing" />
               <p className="text-xs text-muted-foreground">Sent to customers when your credits run out. Leave empty to send nothing.</p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Conversation Memory</label>
-              <Input type="number" min={1} max={50} value={settings.conversation_memory_count} onChange={(e) => update('conversation_memory_count', parseInt(e.target.value))} />
-              <p className="text-xs text-muted-foreground">Number of recent messages AI remembers</p>
-            </div>
           </CardContent>
         </Card>
 
