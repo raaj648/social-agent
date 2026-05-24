@@ -260,14 +260,12 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     aiSettings = settings;
   }
 
-  // Fire sender actions early: mark_seen immediately, typing_on after 1500ms stagger
+  // Fire sender actions (fire-and-forget — Meta bug #1451696302767426 may suppress typing_on)
   if (platform === 'messenger' || platform === 'instagram') {
     sendSenderAction(senderId, accessToken, 'mark_seen')
       .then(ok => { if (!ok) console.error(`[webhook] mark_seen failed for ${senderId} on ${platform}`); });
-    setTimeout(() => {
-      sendSenderAction(senderId, accessToken, 'typing_on')
-        .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
-    }, 1500);
+    sendSenderAction(senderId, accessToken, 'typing_on')
+      .then(ok => { if (!ok) console.error(`[webhook] typing_on failed for ${senderId} on ${platform}`); });
   } else if (platform === 'whatsapp' && platformMsgId && accessToken) {
     const waChannel = channel as any;
     if (waChannel.phone_number_id) {
