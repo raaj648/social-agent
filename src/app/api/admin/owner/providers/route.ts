@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
     };
     if (provider_type) insertData.provider_type = provider_type;
     if (reasoning_max_tokens !== undefined && reasoning_max_tokens !== '') {
-      insertData.reasoning_max_tokens = parseInt(reasoning_max_tokens) || null;
+      const parsed = parseInt(reasoning_max_tokens);
+      insertData.reasoning_max_tokens = !isNaN(parsed) ? parsed : null;
     }
     if (reasoning_strategy !== undefined) {
       insertData.reasoning_strategy = reasoning_strategy || null;

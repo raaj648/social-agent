@@ -46,7 +46,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (body.default_model !== undefined) updates.default_model = body.default_model;
     if (body.provider_type !== undefined) updates.provider_type = body.provider_type;
     if (body.reasoning_max_tokens !== undefined) {
-      updates.reasoning_max_tokens = body.reasoning_max_tokens !== '' ? parseInt(body.reasoning_max_tokens) || null : null;
+      if (body.reasoning_max_tokens !== '' && body.reasoning_max_tokens != null) {
+        const parsed = parseInt(body.reasoning_max_tokens);
+        updates.reasoning_max_tokens = !isNaN(parsed) ? parsed : null;
+      } else {
+        updates.reasoning_max_tokens = null;
+      }
     }
     if (body.reasoning_strategy !== undefined) {
       updates.reasoning_strategy = body.reasoning_strategy || null;
