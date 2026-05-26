@@ -488,9 +488,8 @@ async function handleFacebookConnect() {
     if (!discordBotInfo?.id) return;
     setDiscordInviting(true);
     setDiscordInvitedGuild(null);
-    const redirectUri = `${window.location.origin}/discord/callback`;
     discordPopupRef.current = window.open(
-      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&redirect_uri=${encodeURIComponent(redirectUri)}&scope=bot%20applications.commands`,
+      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&scope=bot%20applications.commands`,
       'discord-auth',
       'width=600,height=700'
     );
