@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
         await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
       }
 
-      // Rename app to match display name (non-blocking)
+      // Rename app to match display name
       if (displayName) {
-        renameDiscordApp(botToken, displayName);
+        await renameDiscordApp(botToken, displayName);
       }
 
       return NextResponse.json({ success: true, bot: botInfo });
@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
       await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
     }
 
-    // Rename app to match display name (non-blocking)
+    // Rename app to match display name
     if (displayName) {
-      renameDiscordApp(botToken, displayName);
+      await renameDiscordApp(botToken, displayName);
     }
 
     await supabase.from('discord_bots').insert({
