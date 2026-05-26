@@ -1082,17 +1082,29 @@ async function handleFacebookConnect() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                    <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
                       <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
                       <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                      <p className="font-medium">Permissions Required</p>
+                      <p>If the bot responds with &quot;Missing Permissions&quot;, it needs updated Discord permissions. Re-invite using the button below.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
                       {!activeBusinessId && businesses.length > 0 && !bot.business_id && (
                         <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'discord', id: bot.id })}>
                           <Building2 className="h-4 w-4" /> Assign
                         </Button>
                       )}
+                      <a
+                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463893548096&scope=bot%20applications.commands`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-medium transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Re-invite
+                      </a>
                       <Button
                         variant="ghost"
                         size="sm"
