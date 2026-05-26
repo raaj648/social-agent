@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { botToken, clientId, guildId, channelId, businessId } = await request.json();
+    const { botToken, clientId, guildId, channelId, businessId, displayName, commandName } = await request.json();
     if (!botToken) {
       return NextResponse.json({ error: 'Missing bot token' }, { status: 400 });
     }
@@ -41,12 +41,14 @@ export async function POST(request: NextRequest) {
           guild_id: guildId || null,
           channel_id: channelId || null,
           bot_username: botInfo.username,
+          display_name: displayName || botInfo.username,
+          command_name: commandName || 'chat',
         })
         .eq('id', existing.id);
 
       // Register slash commands
       if (clientId || botInfo.id) {
-        await registerDiscordCommands(clientId || botInfo.id, botToken);
+        await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
       }
 
       return NextResponse.json({ success: true, bot: botInfo });
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     // Register slash commands
     if (clientId || botInfo.id) {
-      await registerDiscordCommands(clientId || botInfo.id, botToken);
+      await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
     }
 
     await supabase.from('discord_bots').insert({
@@ -65,6 +67,8 @@ export async function POST(request: NextRequest) {
       guild_id: guildId || null,
       channel_id: channelId || null,
       bot_username: botInfo.username,
+      display_name: displayName || botInfo.username,
+      command_name: commandName || 'chat',
     });
 
     await supabase.from('usage_logs').insert({

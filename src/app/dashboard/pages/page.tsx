@@ -59,6 +59,8 @@ interface DiscordBot {
   client_id: string | null;
   is_active: boolean;
   business_id: string | null;
+  display_name: string | null;
+  command_name: string | null;
 }
 
 function PagesPageInner() {
@@ -95,6 +97,8 @@ function PagesPageInner() {
   const [discordChannels, setDiscordChannels] = useState<Array<{ id: string; name: string }>>([]);
   const [discordSelectedGuild, setDiscordSelectedGuild] = useState('');
   const [discordSelectedChannel, setDiscordSelectedChannel] = useState('');
+  const [discordDisplayName, setDiscordDisplayName] = useState('');
+  const [discordCommandName, setDiscordCommandName] = useState('chat');
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
@@ -406,6 +410,8 @@ async function handleFacebookConnect() {
     setDiscordChannels([]);
     setDiscordSelectedGuild('');
     setDiscordSelectedChannel('');
+    setDiscordDisplayName('');
+    setDiscordCommandName('chat');
   }
 
   async function handleDiscordVerifyToken() {
@@ -466,6 +472,8 @@ async function handleFacebookConnect() {
           guildId: discordSelectedGuild,
           channelId: discordSelectedChannel,
           businessId: activeBusinessId,
+          displayName: discordDisplayName,
+          commandName: discordCommandName || 'chat',
         }),
       });
       const data = await res.json();
@@ -1106,7 +1114,9 @@ async function handleFacebookConnect() {
                   </div>
                   <div className="min-w-0">
                     <CardTitle className="text-lg truncate">{bot.bot_username || 'Discord Bot'}</CardTitle>
-                    <p className="text-xs text-muted-foreground">{bot.guild_id ? `Guild: ${bot.guild_id}` : 'Discord Bot'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {bot.display_name ? `${bot.display_name} — /${bot.command_name || 'chat'}` : bot.guild_id ? `Guild: ${bot.guild_id}` : 'Discord Bot'}
+                    </p>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1134,7 +1144,7 @@ async function handleFacebookConnect() {
                         </Button>
                       )}
                       <a
-                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463893548096&integration_type=0&scope=bot%20applications.commands`}
+                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463960656960&integration_type=0&scope=bot%20applications.commands`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-medium transition-colors"
@@ -1228,7 +1238,7 @@ async function handleFacebookConnect() {
 
             {/* Step indicator */}
             <div className="flex items-center gap-2 mb-6">
-              {[1, 2, 3, 4].map((step) => (
+              {[1, 2, 3, 4, 5].map((step) => (
                 <div key={step} className="flex items-center gap-2 flex-1">
                   <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                     discordWizardStep === step
@@ -1239,7 +1249,7 @@ async function handleFacebookConnect() {
                   }`}>
                     {discordWizardStep > step ? <CheckCircle2 className="h-4 w-4" /> : step}
                   </div>
-                  {step < 4 && <div className={`h-0.5 flex-1 ${discordWizardStep > step ? 'bg-green-500' : 'bg-muted'}`} />}
+                  {step < 5 && <div className={`h-0.5 flex-1 ${discordWizardStep > step ? 'bg-green-500' : 'bg-muted'}`} />}
                 </div>
               ))}
             </div>
@@ -1298,7 +1308,7 @@ async function handleFacebookConnect() {
                     Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
                   </p>
                   <a
-                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=463893548096&scope=bot%20applications.commands`}
+                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=463960656960&scope=bot%20applications.commands`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors"
@@ -1370,8 +1380,57 @@ async function handleFacebookConnect() {
                     Back
                   </Button>
                   <Button
-                    onClick={() => setDiscordWizardStep(4)}
+                    onClick={() => {
+                      const bizName = businesses.find(b => b.id === activeBusinessId)?.name || businesses[0]?.name || '';
+                      if (!discordDisplayName) setDiscordDisplayName(bizName);
+                      setDiscordWizardStep(4);
+                    }}
                     disabled={!discordSelectedChannel}
+                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                    Next — Configure Bot
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Configure Bot */}
+            {discordWizardStep === 4 && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Configure how your bot appears in Discord.
+                </p>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Bot Display Name *</label>
+                  <input
+                    value={discordDisplayName}
+                    onChange={(e) => setDiscordDisplayName(e.target.value)}
+                    placeholder="e.g. My Support Bot"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <p className="text-xs text-muted-foreground">This will be set as the bot&apos;s nickname in your server.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Slash Command Name</label>
+                  <input
+                    value={discordCommandName}
+                    onChange={(e) => setDiscordCommandName(e.target.value.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'chat')}
+                    placeholder="chat"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">Users will type <code className="bg-muted px-1 rounded">/{discordCommandName || 'chat'} &lt;message&gt;</code></p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDiscordWizardStep(3)} className="flex-1">
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => setDiscordWizardStep(5)}
+                    disabled={!discordDisplayName}
                     className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
                     <ChevronDown className="h-4 w-4" />
@@ -1381,11 +1440,11 @@ async function handleFacebookConnect() {
               </div>
             )}
 
-            {/* Step 4: Webhook URL & Finish */}
-            {discordWizardStep === 4 && (
+            {/* Step 5: Webhook URL & Finish */}
+            {discordWizardStep === 5 && (
               <div className="space-y-4">
                 <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
-                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 4: Set Interaction Endpoint URL</p>
+                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 5: Set Interaction Endpoint URL</p>
                   <p className="text-muted-foreground mb-3">
                     Go to the Discord Developer Portal → Your Application → <strong>General Information</strong>.
                     Paste the URL below as the <strong>Interaction Endpoint URL</strong> and click Save Changes.
@@ -1410,7 +1469,7 @@ async function handleFacebookConnect() {
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setDiscordWizardStep(3)} disabled={connectingDiscord} className="flex-1">
+                  <Button variant="outline" onClick={() => setDiscordWizardStep(4)} disabled={connectingDiscord} className="flex-1">
                     Back
                   </Button>
                   <Button

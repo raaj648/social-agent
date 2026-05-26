@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { editDiscordInteractionResponse } from '@/lib/discord/bot';
+import { editDiscordInteractionResponse, setBotNickname } from '@/lib/discord/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
 import type { AISettings } from '@/types';
 
@@ -36,17 +36,7 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
   }
 
   // Slash command
-  if (interaction.type === 2 && interaction.data?.name === 'chat') {
-    const messageText = interaction.data?.options?.find((o) => o.name === 'message')?.value as string;
-    if (!messageText) {
-      await editDiscordInteractionResponse(
-        interaction.application_id,
-        interaction.token,
-        'Please provide a message. Usage: `/chat <message>`'
-      );
-      return;
-    }
-
+  if (interaction.type === 2) {
     const supabase = await createAdminClient();
     const discordUserId = String(interaction.member?.user?.id || interaction.user?.id || '');
     const discordUsername = interaction.member?.user?.global_name
@@ -82,7 +72,32 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       return;
     }
 
+    // Dynamic command matching
+    const cmdName = matchedBot.command_name || 'chat';
+    if (interaction.data?.name !== cmdName) {
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        `Unknown command. Use /${cmdName}`
+      );
+      return;
+    }
+
+    const messageText = interaction.data?.options?.find((o) => o.name === 'message')?.value as string;
+    if (!messageText) {
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        `Please provide a message. Usage: \`/${cmdName} <message>\``
+      );
+      return;
+    }
+
     const botToken = decrypt(matchedBot.bot_token);
+
+    // Set bot nickname to configured display name
+    await setBotNickname(botToken, guildId, matchedBot.display_name || matchedBot.bot_username || 'Social Agent');
+
     const channelField = 'discord_id';
     const channelDbId = matchedBot.id;
 

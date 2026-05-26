@@ -14,6 +14,7 @@ export const DISCORD_PERMISSIONS_BITS: Record<string, number> = {
   CONNECT: 1048576,
   SPEAK: 2097152,
   USE_VAD: 33554432,
+  CHANGE_NICKNAME: 67108864,
   MANAGE_THREADS: 17179869184,
   CREATE_PUBLIC_THREADS: 34359738368,
   USE_EXTERNAL_STICKERS: 137438953472,
@@ -61,6 +62,23 @@ export async function sendDiscordMessage(
     return true;
   } catch (error) {
     console.error('Discord sendMessage exception:', error);
+    return false;
+  }
+}
+
+export async function setBotNickname(botToken: string, guildId: string, nickname: string): Promise<boolean> {
+  try {
+    const url = `${DISCORD_API}/guilds/${guildId}/members/@me`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bot ${botToken}`,
+      },
+      body: JSON.stringify({ nick: nickname }),
+    });
+    return res.ok;
+  } catch {
     return false;
   }
 }
@@ -180,7 +198,8 @@ export async function verifyDiscordKey(
 
 export async function registerDiscordCommands(
   clientId: string,
-  botToken: string
+  botToken: string,
+  commandName: string = 'chat'
 ): Promise<boolean> {
   try {
     const url = `${DISCORD_API}/applications/${clientId}/commands`;
@@ -192,7 +211,7 @@ export async function registerDiscordCommands(
       },
       body: JSON.stringify([
         {
-          name: 'chat',
+          name: commandName,
           description: 'Chat with the AI assistant',
           options: [
             {
