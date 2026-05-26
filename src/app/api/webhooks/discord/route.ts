@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyDiscordKey } from '@/lib/discord/bot';
+import { processDiscordInteraction } from '@/lib/discord/webhook';
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,7 +8,6 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('x-signature-ed25519') || '';
     const timestamp = request.headers.get('x-signature-timestamp') || '';
 
-    // Verify Discord signature FIRST — Discord requires this even for PING
     if (signature && timestamp) {
       const isValid = await verifyDiscordKey(rawBody, signature, timestamp);
       if (!isValid) {
@@ -17,17 +17,12 @@ export async function POST(request: NextRequest) {
 
     const interaction = JSON.parse(rawBody);
 
-    // Handle PING
     if (interaction.type === 1) {
       return NextResponse.json({ type: 1 }, { status: 200 });
     }
 
-    // Handle commands with deferred response (type 5)
-    // This avoids Discord's 3-second timeout while we do DB queries
     if (interaction.type === 2) {
-      import('@/lib/discord/webhook').then(({ processDiscordInteraction }) => {
-        processDiscordInteraction(interaction).catch(console.error);
-      });
+      processDiscordInteraction(interaction).catch(console.error);
       return NextResponse.json({ type: 5 }, { status: 200 });
     }
 
