@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { verifyDiscordKey } from '@/lib/discord/bot';
 import { processDiscordInteraction } from '@/lib/discord/webhook';
 
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (interaction.type === 2) {
-      processDiscordInteraction(interaction).catch(console.error);
+      waitUntil(processDiscordInteraction(interaction));
       return NextResponse.json({ type: 5 }, { status: 200 });
     }
 

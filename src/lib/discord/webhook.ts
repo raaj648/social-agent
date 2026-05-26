@@ -86,14 +86,25 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
     const channelField = 'discord_id';
     const channelDbId = matchedBot.id;
 
-    // Find or create conversation
-    let { data: conversation } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq('user_id', matchedBot.user_id)
-      .eq('sender_id', discordUserId)
-      .eq('platform', 'discord')
-      .single();
+    // Find or create conversation + get AI settings in parallel
+    const [convResponse, aiResponse] = await Promise.all([
+      supabase
+        .from('conversations')
+        .select('*')
+        .eq('user_id', matchedBot.user_id)
+        .eq('sender_id', discordUserId)
+        .eq('platform', 'discord')
+        .single(),
+      supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('user_id', matchedBot.user_id)
+        .eq('discord_id', channelDbId)
+        .maybeSingle(),
+    ]);
+
+    let conversation = convResponse.data;
+    let aiSettings = aiResponse.data;
 
     if (conversation) {
       await supabase
@@ -157,14 +168,7 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       return;
     }
 
-    // Get AI settings
-    let { data: aiSettings } = await supabase
-      .from('ai_settings')
-      .select('*')
-      .eq('user_id', matchedBot.user_id)
-      .eq('discord_id', channelDbId)
-      .maybeSingle();
-
+    // AI settings fallback
     if (!aiSettings) {
       const { data: globalSettings } = await supabase
         .from('ai_settings')
@@ -210,9 +214,10 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       `🤔 **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`
     );
 
-    // Fire AI handler asynchronously
+    // Await AI handler — keeps the promise alive so waitUntil() in the route
+    // prevents Vercel from terminating the function before the reply is sent.
     const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);
-    handleAIResponse(
+    await handleAIResponse(
       matchedBot.user_id,
       matchedBot.user_id,
       channelId,
