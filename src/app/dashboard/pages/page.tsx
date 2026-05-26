@@ -1250,7 +1250,7 @@ async function handleFacebookConnect() {
                     Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
                   </p>
                   <a
-                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=2048&scope=bot%20applications.commands`}
+                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=463893548096&scope=bot%20applications.commands`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors"
