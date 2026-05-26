@@ -98,7 +98,7 @@ function PagesPageInner() {
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
-  const [dismissedPermWarnings, setDismissedPermWarnings] = useState<Set<string>>(() => { try { if (typeof window !== 'undefined') { const s = localStorage.getItem('discordPermDismissed'); return s ? new Set(JSON.parse(s)) : new Set(); } } catch {} return new Set(); });const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
+  const [dismissedPermWarnings, setDismissedPermWarnings] = useState<Set<string>>(() => { try { if (typeof window !== 'undefined') { const s = localStorage.getItem('discordPermDismissed'); return s ? new Set(JSON.parse(s)) : new Set(); } } catch {} return new Set(); });const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);const [permCheckStatus, setPermCheckStatus] = useState<Record<string, 'loading' | 'ok' | 'missing'>>({});
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [showInstagramConnect, setShowInstagramConnect] = useState(false);
   const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; id: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
@@ -173,6 +173,34 @@ function PagesPageInner() {
     loadPages();
     loadBusinesses();
   }, [loadPages, activeBusinessId, loadBusinesses]);
+
+  useEffect(() => {
+    if (discordBots.length === 0) return;
+    const ids = discordBots.map(b => b.id).filter(Boolean);
+    setPermCheckStatus(prev => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (!next[id]) next[id] = 'loading';
+      }
+      return next;
+    });
+    for (const bot of discordBots) {
+      if (!bot.id) continue;
+      (async () => {
+        try {
+          const res = await fetch('/api/discord/check-permissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ botId: bot.id }),
+          });
+          const data = await res.json();
+          setPermCheckStatus(prev => ({ ...prev, [bot.id]: data.ok ? 'ok' : 'missing' }));
+        } catch {
+          setPermCheckStatus(prev => ({ ...prev, [bot.id]: 'missing' }));
+        }
+      })();
+    }
+  }, [discordBots]);
 
   useEffect(() => {
     const error = searchParams.get('error');
@@ -1087,7 +1115,12 @@ async function handleFacebookConnect() {
                       <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
                       <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    {!dismissedPermWarnings.has(bot.id) && (
+                    {permCheckStatus[bot.id] === 'loading' && (
+                    <div className="rounded-lg bg-gray-50 dark:bg-gray-950/20 border border-gray-200 dark:border-gray-800 p-3 text-xs text-gray-500 space-y-1">
+                      <p>Checking permissions...</p>
+                    </div>
+                    )}
+                    {permCheckStatus[bot.id] === 'missing' && !dismissedPermWarnings.has(bot.id) && (
                     <div className="relative rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300 space-y-1">
                       <button onClick={() => dismissPermWarning(bot.id)} className="absolute top-1 right-1 p-0.5 rounded hover:bg-amber-200/50 dark:hover:bg-amber-800/50 transition-colors"><X className="h-3 w-3" /></button>
                       <p className="font-medium">Permissions Required</p>

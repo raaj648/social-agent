@@ -234,13 +234,6 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       }
     }
 
-    // Edit deferred response with thinking message
-    await editDiscordInteractionResponse(
-      interaction.application_id,
-      interaction.token,
-      `🤔 **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`
-    );
-
     // Await AI handler — keeps the promise alive so waitUntil() in the route
     // prevents Vercel from terminating the function before the reply is sent.
     const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);

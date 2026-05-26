@@ -3,6 +3,23 @@ import crypto from 'crypto';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
+export const DISCORD_PERMISSIONS_BITS: Record<string, number> = {
+  VIEW_CHANNEL: 1024,
+  SEND_MESSAGES: 2048,
+  MANAGE_MESSAGES: 8192,
+  EMBED_LINKS: 16384,
+  ATTACH_FILES: 32768,
+  READ_MESSAGE_HISTORY: 65536,
+  USE_EXTERNAL_EMOJI: 262144,
+  CONNECT: 1048576,
+  SPEAK: 2097152,
+  USE_VAD: 33554432,
+  MANAGE_THREADS: 17179869184,
+  CREATE_PUBLIC_THREADS: 34359738368,
+  USE_EXTERNAL_STICKERS: 137438953472,
+  SEND_MESSAGES_IN_THREADS: 274877906944,
+};
+
 export async function sendDiscordMessage(
   botToken: string,
   channelId: string,
