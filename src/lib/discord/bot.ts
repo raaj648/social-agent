@@ -85,28 +85,6 @@ export async function setBotNickname(botToken: string, guildId: string, nickname
   }
 }
 
-export async function renameDiscordApp(botToken: string, name: string): Promise<boolean> {
-  try {
-    const url = `${DISCORD_API}/applications/@me`;
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bot ${botToken}`,
-      },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error('renameDiscordApp failed:', res.status, body);
-    }
-    return res.ok;
-  } catch (error) {
-    console.error('renameDiscordApp exception:', error);
-    return false;
-  }
-}
-
 export async function getDiscordBotInfo(
   botToken: string
 ): Promise<{ id: string; username: string } | null> {

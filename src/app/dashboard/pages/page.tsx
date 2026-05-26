@@ -1339,6 +1339,7 @@ async function handleFacebookConnect() {
                     <li>Click <strong>New Application</strong> and give it a name (e.g. &quot;My Support Bot&quot;)</li>
                     <li>Go to <strong>Bot</strong> → <strong>Reset Token</strong> → copy the token</li>
                     <li>Under <strong>Privileged Gateway Intents</strong>, enable <strong>Message Content Intent</strong></li>
+                    <li>Under <strong>General Information</strong>, you can change the app name shown in &quot;AppName is thinking...&quot;</li>
                   </ol>
                 </div>
 
