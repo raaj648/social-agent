@@ -19,8 +19,8 @@ export async function sendDiscordMessage(
       body: JSON.stringify({ content: text }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      console.error('Discord sendMessage error:', err);
+      const errBody = await res.text();
+      console.error('Discord sendMessage error (channel:', channelId, '):', res.status, res.statusText, errBody);
       return false;
     }
     return true;

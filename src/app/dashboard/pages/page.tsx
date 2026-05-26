@@ -98,7 +98,7 @@ function PagesPageInner() {
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
-  const [dismissedPermWarnings, setDismissedPermWarnings] = useState(new Set());const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
+  const [dismissedPermWarnings, setDismissedPermWarnings] = useState<Set<string>>(() => { try { if (typeof window !== 'undefined') { const s = localStorage.getItem('discordPermDismissed'); return s ? new Set(JSON.parse(s)) : new Set(); } } catch {} return new Set(); });const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [showInstagramConnect, setShowInstagramConnect] = useState(false);
   const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; id: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
@@ -369,7 +369,7 @@ async function handleFacebookConnect() {
     }
   }
 
-  function dismissPermWarning(id: string){setDismissedPermWarnings(function(p){var x=new Set(p);x.add(id);return x;})}function resetDiscordWizard() {
+  function dismissPermWarning(id: string){setDismissedPermWarnings(function(p){var x=new Set(p);x.add(id);try{localStorage.setItem('discordPermDismissed',JSON.stringify(Array.from(x)))}catch{}return x;})}function resetDiscordWizard() {
     setShowDiscordForm(false);
     setDiscordWizardStep(1);
     setDiscordToken('');
@@ -1087,10 +1087,13 @@ async function handleFacebookConnect() {
                       <div className={`h-2 w-2 rounded-full ${bot.is_active ? 'bg-green-500' : 'bg-amber-500'}`} />
                       <span>{bot.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                    {!dismissedPermWarnings.has(bot.id) && (
+                    <div className="relative rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                      <button onClick={() => dismissPermWarning(bot.id)} className="absolute top-1 right-1 p-0.5 rounded hover:bg-amber-200/50 dark:hover:bg-amber-800/50 transition-colors"><X className="h-3 w-3" /></button>
                       <p className="font-medium">Permissions Required</p>
                       <p>If the bot responds with &quot;Missing Permissions&quot;, it needs updated Discord permissions. Re-invite using the button below.</p>
                     </div>
+                    )}
                     <div className="flex flex-wrap gap-2 pt-1">
                       {!activeBusinessId && businesses.length > 0 && !bot.business_id && (
                         <Button variant="outline" size="sm" className="gap-2" onClick={() => setAssigningBusiness({ type: 'discord', id: bot.id })}>
