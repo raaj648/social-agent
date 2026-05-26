@@ -277,7 +277,8 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       aiSettings as AISettings,
       discordHasMedia,
       interaction.application_id,
-      interaction.token
+      interaction.token,
+      matchedBot.display_name || matchedBot.bot_username || undefined
     );
 
     return;

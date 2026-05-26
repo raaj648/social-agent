@@ -494,7 +494,7 @@ async function handleFacebookConnect() {
     setDiscordInvitedGuild(null);
     const initialGuildCount = discordGuilds.length;
     discordPopupRef.current = window.open(
-      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&scope=bot%20applications.commands`,
+      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=464497527872&scope=bot%20applications.commands`,
       'discord-auth',
       'width=600,height=700'
     );
@@ -1219,7 +1219,7 @@ async function handleFacebookConnect() {
                         </Button>
                       )}
                       <a
-                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463960656960&integration_type=0&scope=bot%20applications.commands`}
+                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=464497527872&integration_type=0&scope=bot%20applications.commands`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-medium transition-colors"

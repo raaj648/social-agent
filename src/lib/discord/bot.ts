@@ -19,6 +19,7 @@ export const DISCORD_PERMISSIONS_BITS: Record<string, number> = {
   CREATE_PUBLIC_THREADS: 34359738368,
   USE_EXTERNAL_STICKERS: 137438953472,
   SEND_MESSAGES_IN_THREADS: 274877906944,
+  MANAGE_WEBHOOKS: 536870912,
 };
 
 export async function sendDiscordMessage(
@@ -26,9 +27,22 @@ export async function sendDiscordMessage(
   channelId: string,
   text: string,
   interactionAppId?: string,
-  interactionToken?: string
+  interactionToken?: string,
+  webhookName?: string
 ): Promise<boolean> {
   try {
+    // When interaction context and webhookName are available, use channel webhook
+    // to show a clean name without "APP" badge, then delete the interaction placeholder.
+    if (interactionAppId && interactionToken && webhookName) {
+      const webhook = await ensureChannelWebhook(botToken, channelId, webhookName);
+      if (webhook) {
+        const sent = await sendViaWebhook(webhook.id, webhook.token, text);
+        if (sent) {
+          await deleteInteractionResponse(interactionAppId, interactionToken);
+          return true;
+        }
+      }
+    }
     // Use interaction webhook PATCH when available — bypasses channel permissions
     if (interactionAppId && interactionToken) {
       const url = `${DISCORD_API}/webhooks/${interactionAppId}/${interactionToken}/messages/@original`;
@@ -62,6 +76,84 @@ export async function sendDiscordMessage(
     return true;
   } catch (error) {
     console.error('Discord sendMessage exception:', error);
+    return false;
+  }
+}
+
+export async function renameDiscordApp(botToken: string, name: string): Promise<boolean> {
+  try {
+    const url = `${DISCORD_API}/applications/@me`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bot ${botToken}`,
+      },
+      body: JSON.stringify({ name }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function ensureChannelWebhook(
+  botToken: string,
+  channelId: string,
+  name: string
+): Promise<{ id: string; token: string } | null> {
+  try {
+    const listUrl = `${DISCORD_API}/channels/${channelId}/webhooks`;
+    const listRes = await fetch(listUrl, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (listRes.ok) {
+      const webhooks: any[] = await listRes.json();
+      const existing = webhooks.find((w: any) => w.name === name);
+      if (existing) return { id: existing.id, token: existing.token };
+    }
+
+    const createUrl = `${DISCORD_API}/channels/${channelId}/webhooks`;
+    const createRes = await fetch(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bot ${botToken}`,
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!createRes.ok) return null;
+    const data = await createRes.json();
+    return { id: data.id, token: data.token };
+  } catch {
+    return null;
+  }
+}
+
+export async function sendViaWebhook(webhookId: string, webhookToken: string, content: string): Promise<boolean> {
+  try {
+    const url = `${DISCORD_API}/webhooks/${webhookId}/${webhookToken}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error('Discord webhook send error:', res.status, errBody);
+    }
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteInteractionResponse(applicationId: string, interactionToken: string): Promise<boolean> {
+  try {
+    const url = `${DISCORD_API}/webhooks/${applicationId}/${interactionToken}/messages/@original`;
+    const res = await fetch(url, { method: 'DELETE' });
+    return res.ok;
+  } catch {
     return false;
   }
 }

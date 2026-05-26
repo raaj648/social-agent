@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const currentPerms = BigInt(guild.permissions);
-    const targetPerms = BigInt(463960656960);
+    const targetPerms = BigInt(464497527872);
 
     // Check which bits are missing
     const missing: string[] = [];

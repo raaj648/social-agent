@@ -22,7 +22,8 @@ export async function handleAIResponse(
   aiSettings: AISettings,
   hasMedia?: boolean,
   interactionAppId?: string,
-  interactionToken?: string
+  interactionToken?: string,
+  webhookName?: string
 ): Promise<void> {
   try {
     const supabase = await createAdminClient();
@@ -87,7 +88,7 @@ export async function handleAIResponse(
 
       if (userMsgCount === 1) {
         const greeting = settings.greeting_message;
-        const sent = await sendPlatformMessage(senderId, greeting, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+        const sent = await sendPlatformMessage(senderId, greeting, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
         if (sent) {
           await supabase.from('messages').insert({
             conversation_id: conversationId,
@@ -107,7 +108,7 @@ export async function handleAIResponse(
     if (deducted === false) {
       console.warn(`[webhook] Credit deduction failed for user ${targetUserId} — no credits remaining`);
       if (settings.fallback_response) {
-        await sendPlatformMessage(senderId, settings.fallback_response, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+        await sendPlatformMessage(senderId, settings.fallback_response, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
       }
       return;
     }
@@ -340,7 +341,7 @@ export async function handleAIResponse(
 
     if (toolCall && toolCall.function.name === 'request_human_support') {
       const handoffMsg = "Connecting you to a human agent. Please wait...";
-      const sent = await sendPlatformMessage(senderId, handoffMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+      const sent = await sendPlatformMessage(senderId, handoffMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -368,7 +369,7 @@ export async function handleAIResponse(
       });
 
       const confirmationMsg = '\u2705 Order confirmed!\n\nName: ' + (args.customer_name || '\u2014') + '\nPhone: ' + (args.phone || '\u2014') + '\nAddress: ' + (args.delivery_address || '\u2014') + '\nProducts: ' + (args.product_details || '\u2014') + '\n\nWe will process your order shortly. Thank you!';
-      const sent = await sendPlatformMessage(senderId, confirmationMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+      const sent = await sendPlatformMessage(senderId, confirmationMsg, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -421,7 +422,7 @@ export async function handleAIResponse(
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
-        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage);
+        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage, webhookName);
         if (sent) {
           await supabase.from('messages').insert({
             conversation_id: conversationId,
@@ -438,7 +439,7 @@ export async function handleAIResponse(
         return;
       }
 
-      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage);
+      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage, webhookName);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -482,6 +483,7 @@ async function sendPlatformMessage(
   interactionAppId?: string,
   interactionToken?: string,
   userMessage?: string,
+  webhookName?: string,
 ): Promise<boolean> {
   if (platform === 'instagram') {
     const supabase = await createAdminClient();
@@ -514,7 +516,7 @@ async function sendPlatformMessage(
   if (platform === 'discord') {
     const channelId = pageDbId || recipientId;
     const discordText = userMessage ? `> ${userMessage}\n\n${text}` : text;
-    return sendDiscordMessage(accessToken, channelId, discordText, interactionAppId, interactionToken);
+    return sendDiscordMessage(accessToken, channelId, discordText, interactionAppId, interactionToken, webhookName);
   }
 
   return sendMessage(recipientId, text, accessToken, 'messenger');
