@@ -488,18 +488,41 @@ async function handleFacebookConnect() {
     if (!discordBotInfo?.id) return;
     setDiscordInviting(true);
     setDiscordInvitedGuild(null);
+    const initialGuildCount = discordGuilds.length;
     discordPopupRef.current = window.open(
       `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&scope=bot%20applications.commands`,
       'discord-auth',
       'width=600,height=700'
     );
-    const checkInterval = setInterval(() => {
+    const checkInterval = setInterval(async () => {
       if (discordPopupRef.current?.closed) {
         clearInterval(checkInterval);
         discordPopupRef.current = null;
         handleDiscordRefreshGuilds();
+        return;
       }
-    }, 1000);
+      try {
+        const res = await fetch('/api/discord/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ botToken: discordToken }),
+        });
+        const data = await res.json();
+        if (data.guilds && data.guilds.length > initialGuildCount) {
+          setDiscordGuilds(data.guilds);
+          setDiscordInvitedGuild(data.guilds[0].name);
+          setDiscordInviting(false);
+          if (discordPopupRef.current && !discordPopupRef.current.closed) {
+            discordPopupRef.current.close();
+          }
+          clearInterval(checkInterval);
+          discordPopupRef.current = null;
+          toast.success(`Bot added to "${data.guilds[0].name}"`);
+        }
+      } catch {
+        // Silently retry
+      }
+    }, 2000);
   }
 
   async function handleFinishDiscordConnect() {
