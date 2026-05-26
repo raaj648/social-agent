@@ -59,6 +59,21 @@ export async function getDiscordGuildChannels(
   }
 }
 
+export async function getDiscordUserGuilds(
+  botToken: string
+): Promise<Array<{ id: string; name: string; icon: string | null }>> {
+  try {
+    const url = `${DISCORD_API}/users/@me/guilds`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
 export async function createDiscordInteractionResponse(
   interactionId: string,
   interactionToken: string,

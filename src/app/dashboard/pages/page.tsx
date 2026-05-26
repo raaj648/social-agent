@@ -88,8 +88,15 @@ function PagesPageInner() {
   const [telegramToken, setTelegramToken] = useState('');
   const [connectingTelegram, setConnectingTelegram] = useState(false);
   const [showDiscordForm, setShowDiscordForm] = useState(false);
-  const [discordForm, setDiscordForm] = useState({ botToken: '', clientId: '', guildId: '', channelId: '' });
+  const [discordWizardStep, setDiscordWizardStep] = useState(1);
+  const [discordToken, setDiscordToken] = useState('');
+  const [discordBotInfo, setDiscordBotInfo] = useState<{ id: string; username: string } | null>(null);
+  const [discordGuilds, setDiscordGuilds] = useState<Array<{ id: string; name: string }>>([]);
+  const [discordChannels, setDiscordChannels] = useState<Array<{ id: string; name: string }>>([]);
+  const [discordSelectedGuild, setDiscordSelectedGuild] = useState('');
+  const [discordSelectedChannel, setDiscordSelectedChannel] = useState('');
   const [connectingDiscord, setConnectingDiscord] = useState(false);
+  const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
   const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -362,19 +369,80 @@ async function handleFacebookConnect() {
     }
   }
 
-  async function handleConnectDiscord() {
-    if (!discordForm.botToken) return;
+  function resetDiscordWizard() {
+    setShowDiscordForm(false);
+    setDiscordWizardStep(1);
+    setDiscordToken('');
+    setDiscordBotInfo(null);
+    setDiscordGuilds([]);
+    setDiscordChannels([]);
+    setDiscordSelectedGuild('');
+    setDiscordSelectedChannel('');
+  }
+
+  async function handleDiscordVerifyToken() {
+    if (!discordToken) return;
+    setDiscoveringDiscord(true);
+    try {
+      const res = await fetch('/api/discord/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: discordToken }),
+      });
+      const data = await res.json();
+      if (data.botInfo) {
+        setDiscordBotInfo(data.botInfo);
+        setDiscordGuilds(data.guilds || []);
+        setDiscordWizardStep(2);
+      } else {
+        toast.error(data.error || 'Invalid Discord bot token');
+      }
+    } catch {
+      toast.error('Failed to verify Discord bot token');
+    } finally {
+      setDiscoveringDiscord(false);
+    }
+  }
+
+  async function handleDiscordLoadChannels(guildId: string) {
+    if (!guildId || !discordToken) return;
+    setDiscordSelectedGuild(guildId);
+    setDiscordChannels([]);
+    setDiscordSelectedChannel('');
+    try {
+      const res = await fetch('/api/discord/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: discordToken, guildId }),
+      });
+      const data = await res.json();
+      if (data.channels) {
+        setDiscordChannels(data.channels);
+        setDiscordWizardStep(3);
+      }
+    } catch {
+      toast.error('Failed to load channels');
+    }
+  }
+
+  async function handleFinishDiscordConnect() {
+    if (!discordToken || !discordSelectedGuild || !discordSelectedChannel) return;
     setConnectingDiscord(true);
     try {
       const res = await fetch('/api/discord/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...discordForm, businessId: activeBusinessId }),
+        body: JSON.stringify({
+          botToken: discordToken,
+          clientId: discordBotInfo?.id || '',
+          guildId: discordSelectedGuild,
+          channelId: discordSelectedChannel,
+          businessId: activeBusinessId,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setShowDiscordForm(false);
-        setDiscordForm({ botToken: '', clientId: '', guildId: '', channelId: '' });
+        resetDiscordWizard();
         toast.success('Discord bot connected successfully');
         loadPages();
       } else {
@@ -1094,9 +1162,9 @@ async function handleFacebookConnect() {
         </div>
       )}
 
-      {/* Discord Connect Modal */}
+      {/* Discord Connect Modal — Guided 4-Step Wizard */}
       {showDiscordForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !connectingDiscord && setShowDiscordForm(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => !connectingDiscord && !discoveringDiscord && setShowDiscordForm(false)}>
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-6 mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -1105,71 +1173,209 @@ async function handleFacebookConnect() {
                 </div>
                 <h3 className="text-lg font-bold">Connect Discord Bot</h3>
               </div>
-              <button onClick={() => !connectingDiscord && setShowDiscordForm(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
+              <button onClick={() => !connectingDiscord && !discoveringDiscord && setShowDiscordForm(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Create a bot in the <strong>Discord Developer Portal</strong>, enable Message Content Intent, get the bot token and invite it to your server.
-              </p>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Bot Token *</label>
-                <input
-                  value={discordForm.botToken}
-                  onChange={(e) => setDiscordForm(f => ({ ...f, botToken: e.target.value }))}
-                  placeholder="e.g. MTK4Nz...NzY5MA.GkZ...KJHg"
-                  type="password"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Client ID</label>
-                <input
-                  value={discordForm.clientId}
-                  onChange={(e) => setDiscordForm(f => ({ ...f, clientId: e.target.value }))}
-                  placeholder="From Discord Developer Portal"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Guild (Server) ID</label>
-                <input
-                  value={discordForm.guildId}
-                  onChange={(e) => setDiscordForm(f => ({ ...f, guildId: e.target.value }))}
-                  placeholder="Right-click server → Copy ID"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Channel ID (for replies)</label>
-                <input
-                  value={discordForm.channelId}
-                  onChange={(e) => setDiscordForm(f => ({ ...f, channelId: e.target.value }))}
-                  placeholder="Right-click channel → Copy ID"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowDiscordForm(false)} disabled={connectingDiscord} className="flex-1">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConnectDiscord}
-                  disabled={connectingDiscord || !discordForm.botToken}
-                  className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {connectingDiscord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {connectingDiscord ? 'Connecting...' : 'Connect'}
-                </Button>
-              </div>
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mb-6">
+              {[1, 2, 3, 4].map((step) => (
+                <div key={step} className="flex items-center gap-2 flex-1">
+                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    discordWizardStep === step
+                      ? 'bg-indigo-600 text-white'
+                      : discordWizardStep > step
+                        ? 'bg-green-500 text-white'
+                        : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {discordWizardStep > step ? <CheckCircle2 className="h-4 w-4" /> : step}
+                  </div>
+                  {step < 4 && <div className={`h-0.5 flex-1 ${discordWizardStep > step ? 'bg-green-500' : 'bg-muted'}`} />}
+                </div>
+              ))}
             </div>
+
+            {/* Step 1: Create App & Enter Token */}
+            {discordWizardStep === 1 && (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 p-4 text-sm">
+                  <p className="font-medium text-indigo-700 dark:text-indigo-300 mb-2">Step 1: Create a Discord Application</p>
+                  <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
+                    <li>Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">Discord Developer Portal</a></li>
+                    <li>Click <strong>New Application</strong> and give it a name (e.g. &quot;My Support Bot&quot;)</li>
+                    <li>Go to <strong>Bot</strong> → <strong>Reset Token</strong> → copy the token</li>
+                    <li>Under <strong>Privileged Gateway Intents</strong>, enable <strong>Message Content Intent</strong></li>
+                  </ol>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Bot Token *</label>
+                  <input
+                    value={discordToken}
+                    onChange={(e) => setDiscordToken(e.target.value)}
+                    placeholder="e.g. MTK4Nz...NzY5MA.GkZ...KJHg"
+                    type="password"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setShowDiscordForm(false)} disabled={discoveringDiscord} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleDiscordVerifyToken}
+                    disabled={discoveringDiscord || !discordToken}
+                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {discoveringDiscord ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    {discoveringDiscord ? 'Verifying...' : 'Verify Token'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Invite Bot to Server */}
+            {discordWizardStep === 2 && (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 text-sm">
+                  <p className="font-medium text-green-700 dark:text-green-300 mb-1">✓ Token Verified</p>
+                  <p className="text-muted-foreground">Bot: <strong>{discordBotInfo?.username || 'Unknown'}</strong></p>
+                </div>
+
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
+                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 2: Invite Bot to Your Server</p>
+                  <p className="text-muted-foreground mb-3">
+                    Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
+                  </p>
+                  <a
+                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=2048&scope=bot%20applications.commands`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add to Server
+                  </a>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDiscordWizardStep(1)} className="flex-1">
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => handleDiscordLoadChannels(discordGuilds[0]?.id || '')}
+                    disabled={discordGuilds.length === 0}
+                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                    Continue
+                  </Button>
+                </div>
+                {discordGuilds.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    After inviting the bot, click Continue to load your servers.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: Select Server & Channel */}
+            {discordWizardStep === 3 && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Step 3: Select the server and channel where you want the AI bot to reply.
+                </p>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Server</label>
+                  <select
+                    value={discordSelectedGuild}
+                    onChange={(e) => handleDiscordLoadChannels(e.target.value)}
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="">Select a server...</option>
+                    {discordGuilds.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Channel</label>
+                  <select
+                    value={discordSelectedChannel}
+                    onChange={(e) => setDiscordSelectedChannel(e.target.value)}
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    disabled={!discordSelectedGuild}
+                  >
+                    <option value="">Select a channel...</option>
+                    {discordChannels.map((c) => (
+                      <option key={c.id} value={c.id}>#{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDiscordWizardStep(2)} className="flex-1">
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => setDiscordWizardStep(4)}
+                    disabled={!discordSelectedChannel}
+                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                    Next — Set Webhook URL
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Webhook URL & Finish */}
+            {discordWizardStep === 4 && (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
+                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 4: Set Interaction Endpoint URL</p>
+                  <p className="text-muted-foreground mb-3">
+                    Go to the Discord Developer Portal → Your Application → <strong>General Information</strong>.
+                    Paste the URL below as the <strong>Interaction Endpoint URL</strong> and click Save Changes.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value="https://social-agent-iota.vercel.app/api/webhooks/discord"
+                      className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs font-mono focus:outline-none"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://social-agent-iota.vercel.app/api/webhooks/discord');
+                        toast.success('URL copied to clipboard');
+                      }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setDiscordWizardStep(3)} disabled={connectingDiscord} className="flex-1">
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleFinishDiscordConnect}
+                    disabled={connectingDiscord}
+                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {connectingDiscord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {connectingDiscord ? 'Connecting...' : 'Finish Setup'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
