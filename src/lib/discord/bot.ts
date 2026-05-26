@@ -6,9 +6,27 @@ const DISCORD_API = 'https://discord.com/api/v10';
 export async function sendDiscordMessage(
   botToken: string,
   channelId: string,
-  text: string
+  text: string,
+  interactionAppId?: string,
+  interactionToken?: string
 ): Promise<boolean> {
   try {
+    // Use interaction webhook PATCH when available — bypasses channel permissions
+    if (interactionAppId && interactionToken) {
+      const url = `${DISCORD_API}/webhooks/${interactionAppId}/${interactionToken}/messages/@original`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error('Discord webhook PATCH error (channel:', channelId, '):', res.status, errBody);
+        return false;
+      }
+      return true;
+    }
+    // Fallback to channel POST
     const url = `${DISCORD_API}/channels/${channelId}/messages`;
     const res = await fetch(url, {
       method: 'POST',

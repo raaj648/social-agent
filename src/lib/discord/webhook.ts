@@ -256,7 +256,9 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       botToken,
       'discord',
       aiSettings as AISettings,
-      discordHasMedia
+      discordHasMedia,
+      interaction.application_id,
+      interaction.token
     );
 
     return;
