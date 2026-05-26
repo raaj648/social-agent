@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { encrypt } from '@/lib/crypto';
-import { getDiscordBotInfo, registerDiscordCommands, renameDiscordApp } from '@/lib/discord/bot';
+import { getDiscordBotInfo, registerDiscordCommands } from '@/lib/discord/bot';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,22 +52,12 @@ export async function POST(request: NextRequest) {
         await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
       }
 
-      // Rename app to match display name
-      if (displayName) {
-        await renameDiscordApp(botToken, displayName);
-      }
-
       return NextResponse.json({ success: true, bot: botInfo });
     }
 
     // Register slash commands
     if (clientId || botInfo.id) {
       await registerDiscordCommands(clientId || botInfo.id, botToken, commandName || 'chat');
-    }
-
-    // Rename app to match display name
-    if (displayName) {
-      await renameDiscordApp(botToken, displayName);
     }
 
     await supabase.from('discord_bots').insert({

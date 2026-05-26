@@ -68,31 +68,6 @@ export async function sendDiscordMessage(
   }
 }
 
-export async function renameDiscordApp(botToken: string, name: string): Promise<boolean> {
-  try {
-    const url = `${DISCORD_API}/applications/@me`;
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bot ${botToken}`,
-      },
-      body: JSON.stringify({ name }),
-    });
-    const ok = res.ok;
-    if (!ok) {
-      const body = await res.text();
-      console.error('renameDiscordApp failed:', res.status, body);
-    } else {
-      console.log('renameDiscordApp success:', name);
-    }
-    return ok;
-  } catch (error) {
-    console.error('renameDiscordApp exception:', error);
-    return false;
-  }
-}
-
 export async function setBotNickname(botToken: string, guildId: string, nickname: string): Promise<boolean> {
   try {
     const url = `${DISCORD_API}/guilds/${guildId}/members/@me`;

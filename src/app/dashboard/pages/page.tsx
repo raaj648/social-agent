@@ -1522,14 +1522,14 @@ async function handleFacebookConnect() {
                 </p>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Bot Display Name *</label>
+                  <label className="text-sm font-medium">Bot Server Nickname *</label>
                   <input
                     value={discordDisplayName}
                     onChange={(e) => setDiscordDisplayName(e.target.value)}
                     placeholder="e.g. My Support Bot"
                     className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
-                  <p className="text-xs text-muted-foreground">This will be set as the bot&apos;s nickname in your server.</p>
+                  <p className="text-xs text-muted-foreground">This is the bot&apos;s server nickname (not the Discord app name).</p>
                 </div>
 
                 <div className="space-y-1">
@@ -1542,6 +1542,24 @@ async function handleFacebookConnect() {
                   />
                   <p className="text-xs text-muted-foreground">Users will type <code className="bg-muted px-1 rounded">/{discordCommandName || 'chat'} &lt;message&gt;</code></p>
                 </div>
+
+                {discordBotInfo?.id && (
+                  <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+                    <p className="text-sm font-medium">Discord App Name</p>
+                    <p className="text-xs text-muted-foreground">
+                      The <code className="bg-muted px-1 rounded">AppName is thinking...</code> text shows your Discord application name.
+                      To change it, edit the name in the Discord Developer Portal.
+                    </p>
+                    <a
+                      href={`https://discord.com/developers/applications/${discordBotInfo.id}/information`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                    >
+                      Open Discord Developer Portal &rarr;
+                    </a>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" onClick={() => setDiscordWizardStep(3)} className="flex-1">
