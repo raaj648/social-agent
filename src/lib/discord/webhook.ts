@@ -106,8 +106,8 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
 
     const botToken = decrypt(matchedBot.bot_token);
 
-    // Set bot nickname to configured display name
-    await setBotNickname(botToken, guildId, matchedBot.display_name || matchedBot.bot_username || 'Social Agent');
+    // Set bot nickname to bot's Discord username (not business display name)
+    await setBotNickname(botToken, guildId, matchedBot.bot_username || 'Social Agent');
 
     const channelField = 'discord_id';
     const channelDbId = matchedBot.id;
