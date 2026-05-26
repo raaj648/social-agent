@@ -99,6 +99,9 @@ function PagesPageInner() {
   const [discordSelectedChannel, setDiscordSelectedChannel] = useState('');
   const [discordDisplayName, setDiscordDisplayName] = useState('');
   const [discordCommandName, setDiscordCommandName] = useState('chat');
+  const discordPopupRef = useRef<Window | null>(null);
+  const [discordInvitedGuild, setDiscordInvitedGuild] = useState<string | null>(null);
+  const [discordInviting, setDiscordInviting] = useState(false);
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
@@ -453,10 +456,49 @@ async function handleFacebookConnect() {
       if (data.channels) {
         setDiscordChannels(data.channels);
         setDiscordWizardStep(3);
+        if (data.channels.length > 0) setDiscordSelectedChannel(data.channels[0].id);
       }
     } catch {
       toast.error('Failed to load channels');
     }
+  }
+
+  async function handleDiscordRefreshGuilds() {
+    if (!discordToken) return;
+    try {
+      const res = await fetch('/api/discord/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: discordToken }),
+      });
+      const data = await res.json();
+      if (data.guilds && data.guilds.length > 0) {
+        setDiscordGuilds(data.guilds);
+        setDiscordInvitedGuild(data.guilds[0].name);
+        setDiscordInviting(false);
+        toast.success(`Bot added to "${data.guilds[0].name}"`);
+      }
+    } catch {
+      // Silently retry
+    }
+  }
+
+  function handleDiscordInvite() {
+    if (!discordBotInfo?.id) return;
+    setDiscordInviting(true);
+    setDiscordInvitedGuild(null);
+    discordPopupRef.current = window.open(
+      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&scope=bot%20applications.commands`,
+      'discord-auth',
+      'width=600,height=700'
+    );
+    const checkInterval = setInterval(() => {
+      if (discordPopupRef.current?.closed) {
+        clearInterval(checkInterval);
+        discordPopupRef.current = null;
+        handleDiscordRefreshGuilds();
+      }
+    }, 1000);
   }
 
   async function handleFinishDiscordConnect() {
@@ -1307,15 +1349,19 @@ async function handleFacebookConnect() {
                   <p className="text-muted-foreground mb-3">
                     Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
                   </p>
-                  <a
-                    href={`https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo?.id}&permissions=463960656960&scope=bot%20applications.commands`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors"
+                  <Button
+                    onClick={handleDiscordInvite}
+                    disabled={discordInviting}
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors w-full"
                   >
-                    <Plus className="h-4 w-4" />
-                    Add to Server
-                  </a>
+                    {discordInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {discordInviting ? 'Waiting for authorization...' : 'Add to Server'}
+                  </Button>
+                  {discordInvitedGuild && (
+                    <div className="mt-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-3 text-sm">
+                      <p className="font-medium text-green-700 dark:text-green-300">✓ Bot added to <strong>{discordInvitedGuild}</strong></p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-2">
@@ -1331,9 +1377,9 @@ async function handleFacebookConnect() {
                     Continue
                   </Button>
                 </div>
-                {discordGuilds.length === 0 && (
+                {discordGuilds.length === 0 && !discordInviting && (
                   <p className="text-xs text-muted-foreground text-center">
-                    After inviting the bot, click Continue to load your servers.
+                    After adding the bot, return here and click Continue.
                   </p>
                 )}
               </div>

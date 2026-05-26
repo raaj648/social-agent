@@ -421,7 +421,7 @@ export async function handleAIResponse(
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
-        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+        const sent = await sendPlatformMessage(senderId, followUpContent, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage);
         if (sent) {
           await supabase.from('messages').insert({
             conversation_id: conversationId,
@@ -438,7 +438,7 @@ export async function handleAIResponse(
         return;
       }
 
-      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken);
+      const sent = await sendPlatformMessage(senderId, aiReply, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, incomingMessage);
       if (sent) {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
@@ -481,6 +481,7 @@ async function sendPlatformMessage(
   pageDbId?: string | null,
   interactionAppId?: string,
   interactionToken?: string,
+  userMessage?: string,
 ): Promise<boolean> {
   if (platform === 'instagram') {
     const supabase = await createAdminClient();
@@ -512,7 +513,8 @@ async function sendPlatformMessage(
 
   if (platform === 'discord') {
     const channelId = pageDbId || recipientId;
-    return sendDiscordMessage(accessToken, channelId, text, interactionAppId, interactionToken);
+    const discordText = userMessage ? `> ${userMessage}\n\n${text}` : text;
+    return sendDiscordMessage(accessToken, channelId, discordText, interactionAppId, interactionToken);
   }
 
   return sendMessage(recipientId, text, accessToken, 'messenger');
