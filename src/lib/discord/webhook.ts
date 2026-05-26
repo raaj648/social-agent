@@ -181,6 +181,33 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       aiSettings = globalSettings;
     }
 
+    // In-memory defaults fallback — consistent with Meta and Telegram webhooks
+    if (!aiSettings) {
+      aiSettings = {
+        is_active: true,
+        model: 'openai/gpt-4o-mini',
+        temperature: null,
+        max_tokens: null,
+        conversation_memory_count: 10,
+        system_prompt: null,
+        fallback_response: '',
+        greeting_enabled: false,
+        greeting_message: null,
+        business_hours_only: false,
+        business_hours_start: null,
+        business_hours_end: null,
+        timezone: 'UTC',
+        keywords_blacklist: [],
+        id: '',
+        user_id: matchedBot.user_id,
+        business_id: null,
+        page_id: null,
+        instagram_id: null,
+        telegram_id: null,
+        discord_id: null,
+      } as unknown as AISettings;
+    }
+
     if (!aiSettings?.is_active) {
       await editDiscordInteractionResponse(
         interaction.application_id,
@@ -211,10 +238,10 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
     await editDiscordInteractionResponse(
       interaction.application_id,
       interaction.token,
-      `ðŸ¤” **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`
+      `?? **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`
     );
 
-    // Await AI handler â€” keeps the promise alive so waitUntil() in the route
+    // Await AI handler — keeps the promise alive so waitUntil() in the route
     // prevents Vercel from terminating the function before the reply is sent.
     const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);
     await handleAIResponse(
