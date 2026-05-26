@@ -1,3 +1,6 @@
+import { getDiscordPublicKey } from '@/lib/credentials';
+import crypto from 'crypto';
+
 const DISCORD_API = 'https://discord.com/api/v10';
 
 export async function sendDiscordMessage(
@@ -108,6 +111,33 @@ export async function editDiscordInteractionResponse(
       body: JSON.stringify({ content }),
     });
     return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyDiscordKey(
+  rawBody: string,
+  signature: string,
+  timestamp: string
+): Promise<boolean> {
+  const publicKey = await getDiscordPublicKey();
+  if (!publicKey) return false;
+  try {
+    const rawKey = Buffer.from(publicKey, 'hex');
+    const derPrefix = Buffer.from('302a300506032b6570032100', 'hex');
+    const derKey = Buffer.concat([derPrefix, rawKey]);
+    const key = crypto.createPublicKey({
+      key: derKey,
+      format: 'der',
+      type: 'spki',
+    });
+    return crypto.verify(
+      null,
+      Buffer.from(timestamp + rawBody),
+      key,
+      Buffer.from(signature, 'hex')
+    );
   } catch {
     return false;
   }

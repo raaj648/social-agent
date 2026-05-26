@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyDiscordKey } from '@/lib/discord/bot';
 
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
-    const interaction = JSON.parse(rawBody);
-
-    // Handle PING immediately — no signature needed, no heavy imports
-    // This is required so Discord can verify the endpoint URL before
-    // the admin has configured the public key in settings.
-    if (interaction.type === 1) {
-      return new Response('{"type":1}', {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-
-    // Dynamically import heavy modules only after PING check
-    const { verifyDiscordKey, processDiscordInteraction } = await import('@/lib/discord/webhook');
-
     const signature = request.headers.get('x-signature-ed25519') || '';
     const timestamp = request.headers.get('x-signature-timestamp') || '';
 
+    // Verify Discord signature FIRST — Discord requires this even for PING
     if (signature && timestamp) {
       const isValid = await verifyDiscordKey(rawBody, signature, timestamp);
       if (!isValid) {
@@ -28,6 +15,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const interaction = JSON.parse(rawBody);
+
+    // Handle PING
+    if (interaction.type === 1) {
+      return NextResponse.json({ type: 1 }, { status: 200 });
+    }
+
+    // Dynamically import heavy command handler only for real commands
+    const { processDiscordInteraction } = await import('@/lib/discord/webhook');
     const response = await processDiscordInteraction(interaction);
 
     return NextResponse.json(response, { status: 200 });

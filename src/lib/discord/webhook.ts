@@ -2,36 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
 import { createDiscordInteractionResponse, sendDiscordMessage } from '@/lib/discord/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
-import { getDiscordPublicKey } from '@/lib/credentials';
 import type { AISettings } from '@/types';
-import crypto from 'crypto';
-
-export async function verifyDiscordKey(
-  rawBody: string,
-  signature: string,
-  timestamp: string
-): Promise<boolean> {
-  const publicKey = await getDiscordPublicKey();
-  if (!publicKey) return false;
-  try {
-    const rawKey = Buffer.from(publicKey, 'hex');
-    const derPrefix = Buffer.from('302a300506032b6570032100', 'hex');
-    const derKey = Buffer.concat([derPrefix, rawKey]);
-    const key = crypto.createPublicKey({
-      key: derKey,
-      format: 'der',
-      type: 'spki',
-    });
-    return crypto.verify(
-      null,
-      Buffer.from(timestamp + rawBody),
-      key,
-      Buffer.from(signature, 'hex')
-    );
-  } catch {
-    return false;
-  }
-}
 
 interface DiscordInteraction {
   type: number;
