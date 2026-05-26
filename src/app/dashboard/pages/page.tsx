@@ -56,6 +56,7 @@ interface DiscordBot {
   bot_username: string | null;
   guild_id: string | null;
   channel_id: string | null;
+  channel_ids: string[];
   client_id: string | null;
   is_active: boolean;
   business_id: string | null;
@@ -96,7 +97,7 @@ function PagesPageInner() {
   const [discordGuilds, setDiscordGuilds] = useState<Array<{ id: string; name: string }>>([]);
   const [discordChannels, setDiscordChannels] = useState<Array<{ id: string; name: string }>>([]);
   const [discordSelectedGuild, setDiscordSelectedGuild] = useState('');
-  const [discordSelectedChannel, setDiscordSelectedChannel] = useState('');
+  const [discordSelectedChannels, setDiscordSelectedChannels] = useState<string[]>([]);
   const [discordDisplayName, setDiscordDisplayName] = useState('');
   const [discordCommandName, setDiscordCommandName] = useState('chat');
   const discordPopupRef = useRef<Window | null>(null);
@@ -412,7 +413,7 @@ async function handleFacebookConnect() {
     setDiscordGuilds([]);
     setDiscordChannels([]);
     setDiscordSelectedGuild('');
-    setDiscordSelectedChannel('');
+    setDiscordSelectedChannels([]);
     setDiscordDisplayName('');
     setDiscordCommandName('chat');
   }
@@ -445,7 +446,7 @@ async function handleFacebookConnect() {
     if (!guildId || !discordToken) return;
     setDiscordSelectedGuild(guildId);
     setDiscordChannels([]);
-    setDiscordSelectedChannel('');
+    setDiscordSelectedChannels([]);
     try {
       const res = await fetch('/api/discord/discover', {
         method: 'POST',
@@ -456,7 +457,7 @@ async function handleFacebookConnect() {
       if (data.channels) {
         setDiscordChannels(data.channels);
         setDiscordWizardStep(3);
-        if (data.channels.length > 0) setDiscordSelectedChannel(data.channels[0].id);
+        setDiscordSelectedChannels(data.channels.map((c: { id: string }) => c.id));
       }
     } catch {
       toast.error('Failed to load channels');
@@ -487,8 +488,9 @@ async function handleFacebookConnect() {
     if (!discordBotInfo?.id) return;
     setDiscordInviting(true);
     setDiscordInvitedGuild(null);
+    const redirectUri = `${window.location.origin}/discord/callback`;
     discordPopupRef.current = window.open(
-      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&scope=bot%20applications.commands`,
+      `https://discord.com/api/oauth2/authorize?client_id=${discordBotInfo.id}&permissions=463960656960&redirect_uri=${encodeURIComponent(redirectUri)}&scope=bot%20applications.commands`,
       'discord-auth',
       'width=600,height=700'
     );
@@ -502,7 +504,7 @@ async function handleFacebookConnect() {
   }
 
   async function handleFinishDiscordConnect() {
-    if (!discordToken || !discordSelectedGuild || !discordSelectedChannel) return;
+    if (!discordToken || !discordSelectedGuild || discordSelectedChannels.length === 0) return;
     setConnectingDiscord(true);
     try {
       const res = await fetch('/api/discord/connect', {
@@ -512,7 +514,7 @@ async function handleFacebookConnect() {
           botToken: discordToken,
           clientId: discordBotInfo?.id || '',
           guildId: discordSelectedGuild,
-          channelId: discordSelectedChannel,
+          channelIds: discordSelectedChannels,
           businessId: activeBusinessId,
           displayName: discordDisplayName,
           commandName: discordCommandName || 'chat',
@@ -1158,6 +1160,11 @@ async function handleFacebookConnect() {
                     <CardTitle className="text-lg truncate">{bot.bot_username || 'Discord Bot'}</CardTitle>
                     <p className="text-xs text-muted-foreground">
                       {bot.display_name ? `${bot.display_name} — /${bot.command_name || 'chat'}` : bot.guild_id ? `Guild: ${bot.guild_id}` : 'Discord Bot'}
+                      {bot.channel_ids && bot.channel_ids.length > 0 && (
+                        <span className="ml-2 text-[10px] text-muted-foreground/60">
+                          {bot.channel_ids.length} channel{bot.channel_ids.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </CardHeader>
@@ -1344,25 +1351,26 @@ async function handleFacebookConnect() {
                   <p className="text-muted-foreground">Bot: <strong>{discordBotInfo?.username || 'Unknown'}</strong></p>
                 </div>
 
-                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
-                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 2: Invite Bot to Your Server</p>
-                  <p className="text-muted-foreground mb-3">
-                    Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
-                  </p>
-                  <Button
-                    onClick={handleDiscordInvite}
-                    disabled={discordInviting}
-                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors w-full"
-                  >
-                    {discordInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    {discordInviting ? 'Waiting for authorization...' : 'Add to Server'}
-                  </Button>
-                  {discordInvitedGuild && (
-                    <div className="mt-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-3 text-sm">
-                      <p className="font-medium text-green-700 dark:text-green-300">✓ Bot added to <strong>{discordInvitedGuild}</strong></p>
-                    </div>
-                  )}
-                </div>
+                {discordInvitedGuild ? (
+                  <div className="rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 text-sm">
+                    <p className="font-medium text-green-700 dark:text-green-300">✓ Bot added to <strong>{discordInvitedGuild}</strong></p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
+                    <p className="font-medium text-amber-700 dark:text-amber-300 mb-2">Step 2: Invite Bot to Your Server</p>
+                    <p className="text-muted-foreground mb-3">
+                      Click the button below to add the bot to your Discord server. Make sure you have &quot;Manage Server&quot; permissions.
+                    </p>
+                    <Button
+                      onClick={handleDiscordInvite}
+                      disabled={discordInviting}
+                      className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-medium transition-colors w-full"
+                    >
+                      {discordInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      {discordInviting ? 'Waiting for authorization...' : 'Add to Server'}
+                    </Button>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" onClick={() => setDiscordWizardStep(1)} className="flex-1">
@@ -1388,56 +1396,95 @@ async function handleFacebookConnect() {
             {/* Step 3: Select Server & Channel */}
             {discordWizardStep === 3 && (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Step 3: Select the server and channel where you want the AI bot to reply.
-                </p>
+                  <p className="text-sm text-muted-foreground">
+                    Step 3: Select the server and channels where you want the AI bot to reply.
+                  </p>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Server</label>
-                  <select
-                    value={discordSelectedGuild}
-                    onChange={(e) => handleDiscordLoadChannels(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    <option value="">Select a server...</option>
-                    {discordGuilds.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </select>
-                </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Server</label>
+                    <select
+                      value={discordSelectedGuild}
+                      onChange={(e) => handleDiscordLoadChannels(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="">Select a server...</option>
+                      {discordGuilds.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Channel</label>
-                  <select
-                    value={discordSelectedChannel}
-                    onChange={(e) => setDiscordSelectedChannel(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    disabled={!discordSelectedGuild}
-                  >
-                    <option value="">Select a channel...</option>
-                    {discordChannels.map((c) => (
-                      <option key={c.id} value={c.id}>#{c.name}</option>
-                    ))}
-                  </select>
-                </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Channels</label>
+                      {discordChannels.length > 0 && (
+                        <button
+                          onClick={() => {
+                            if (discordSelectedChannels.length === discordChannels.length) {
+                              setDiscordSelectedChannels([]);
+                            } else {
+                              setDiscordSelectedChannels(discordChannels.map(c => c.id));
+                            }
+                          }}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {discordSelectedChannels.length === discordChannels.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-input bg-background p-1 space-y-0.5">
+                      {discordChannels.length === 0 ? (
+                        <p className="px-3 py-4 text-xs text-muted-foreground text-center">
+                          {discordSelectedGuild ? 'No text channels found.' : 'Select a server first.'}
+                        </p>
+                      ) : (
+                        discordChannels.map((c) => {
+                          const checked = discordSelectedChannels.includes(c.id);
+                          return (
+                            <label
+                              key={c.id}
+                              className={`flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                                checked ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'hover:bg-muted'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setDiscordSelectedChannels(prev =>
+                                    checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                                  );
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="text-sm">#{c.name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {discordSelectedChannels.length} channel{discordSelectedChannels.length !== 1 ? 's' : ''} selected
+                    </p>
+                  </div>
 
-                <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setDiscordWizardStep(2)} className="flex-1">
-                    Back
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      const bizName = businesses.find(b => b.id === activeBusinessId)?.name || businesses[0]?.name || '';
-                      if (!discordDisplayName) setDiscordDisplayName(bizName);
-                      setDiscordWizardStep(4);
-                    }}
-                    disabled={!discordSelectedChannel}
-                    className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                    Next — Configure Bot
-                  </Button>
-                </div>
+                  <div className="flex gap-3 pt-2">
+                    <Button variant="outline" onClick={() => setDiscordWizardStep(2)} className="flex-1">
+                      Back
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const bizName = businesses.find(b => b.id === activeBusinessId)?.name || businesses[0]?.name || '';
+                        if (!discordDisplayName) setDiscordDisplayName(bizName);
+                        setDiscordWizardStep(4);
+                      }}
+                      disabled={discordSelectedChannels.length === 0}
+                      className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                      Next — Configure Bot
+                    </Button>
+                  </div>
               </div>
             )}
 

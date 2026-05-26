@@ -72,6 +72,17 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       return;
     }
 
+    // Channel whitelist check
+    const allowedChannels: string[] = matchedBot.channel_ids || [];
+    if (allowedChannels.length > 0 && !allowedChannels.includes(channelId)) {
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'This bot is not configured to reply in this channel.'
+      );
+      return;
+    }
+
     // Dynamic command matching
     const cmdName = matchedBot.command_name || 'chat';
     if (interaction.data?.name !== cmdName) {

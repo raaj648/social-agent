@@ -277,6 +277,7 @@ export interface DiscordBot {
   client_id: string | null;
   guild_id: string | null;
   channel_id: string | null;
+  channel_ids: string[];
   bot_username: string | null;
   is_active: boolean;
   created_at: string;

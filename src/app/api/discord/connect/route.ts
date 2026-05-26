@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { botToken, clientId, guildId, channelId, businessId, displayName, commandName } = await request.json();
+    const { botToken, clientId, guildId, channelId, channelIds, businessId, displayName, commandName } = await request.json();
     if (!botToken) {
       return NextResponse.json({ error: 'Missing bot token' }, { status: 400 });
     }
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
           bot_username: botInfo.username,
           display_name: displayName || botInfo.username,
           command_name: commandName || 'chat',
+          channel_ids: channelIds || (channelId ? [channelId] : []),
         })
         .eq('id', existing.id);
 
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
       bot_username: botInfo.username,
       display_name: displayName || botInfo.username,
       command_name: commandName || 'chat',
+      channel_ids: channelIds || (channelId ? [channelId] : []),
     });
 
     await supabase.from('usage_logs').insert({
