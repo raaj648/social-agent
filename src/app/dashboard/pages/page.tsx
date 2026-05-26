@@ -98,7 +98,7 @@ function PagesPageInner() {
   const [connectingDiscord, setConnectingDiscord] = useState(false);
   const [discoveringDiscord, setDiscoveringDiscord] = useState(false);
   const [disconnectingTg, setDisconnectingTg] = useState<string | null>(null);
-  const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
+  const [dismissedPermWarnings, setDismissedPermWarnings] = useState(new Set());const [disconnectingDc, setDisconnectingDc] = useState<string | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [showInstagramConnect, setShowInstagramConnect] = useState(false);
   const [availableIgPages, setAvailableIgPages] = useState<Array<{ page_id: string; page_name: string; id: string; ig_id: string; ig_username: string; ig_name: string; ig_profile_pic: string | null }>>([]);
@@ -369,7 +369,7 @@ async function handleFacebookConnect() {
     }
   }
 
-  function resetDiscordWizard() {
+  function dismissPermWarning(id: string){setDismissedPermWarnings(function(p){var x=new Set(p);x.add(id);return x;})}function resetDiscordWizard() {
     setShowDiscordForm(false);
     setDiscordWizardStep(1);
     setDiscordToken('');
@@ -1098,7 +1098,7 @@ async function handleFacebookConnect() {
                         </Button>
                       )}
                       <a
-                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463893548096&scope=bot%20applications.commands`}
+                        href={`https://discord.com/api/oauth2/authorize?client_id=${bot.client_id}&permissions=463893548096&integration_type=0&scope=bot%20applications.commands`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-medium transition-colors"
