@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
-import { createDiscordInteractionResponse, sendDiscordMessage } from '@/lib/discord/bot';
+import { editDiscordInteractionResponse } from '@/lib/discord/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
 import type { AISettings } from '@/types';
 
@@ -29,7 +29,7 @@ interface DiscordInteraction {
 export async function processDiscordInteraction(interaction: DiscordInteraction): Promise<{
   type: number;
   data?: { content: string };
-}> {
+} | void> {
   // PING verification
   if (interaction.type === 1) {
     return { type: 1 };
@@ -39,10 +39,12 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
   if (interaction.type === 2 && interaction.data?.name === 'chat') {
     const messageText = interaction.data?.options?.find((o) => o.name === 'message')?.value as string;
     if (!messageText) {
-      return {
-        type: 4,
-        data: { content: 'Please provide a message. Usage: `/chat <message>`' },
-      };
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'Please provide a message. Usage: `/chat <message>`'
+      );
+      return;
     }
 
     const supabase = await createAdminClient();
@@ -62,15 +64,22 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       .maybeSingle();
 
     if (!matchedBot) {
-      return {
-        type: 4,
-        data: { content: 'This server is not configured with an AI bot. Please contact the server admin.' },
-      };
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'This server is not configured with an AI bot. Please contact the server admin.'
+      );
+      return;
     }
 
     const user = matchedBot.user as any;
     if (!user?.is_active) {
-      return { type: 4, data: { content: 'Bot is disabled.' } };
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'Bot is disabled.'
+      );
+      return;
     }
 
     const botToken = decrypt(matchedBot.bot_token);
@@ -113,7 +122,12 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
         .single();
 
       if (!newConv) {
-        return { type: 4, data: { content: 'Failed to create conversation.' } };
+        await editDiscordInteractionResponse(
+          interaction.application_id,
+          interaction.token,
+          'Failed to create conversation.'
+        );
+        return;
       }
       conversation = newConv;
     }
@@ -135,7 +149,12 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
 
     // Check AI paused
     if (conversation.is_ai_paused) {
-      return { type: 4, data: { content: 'AI is currently paused for this conversation.' } };
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'AI is currently paused for this conversation.'
+      );
+      return;
     }
 
     // Get AI settings
@@ -159,7 +178,12 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
     }
 
     if (!aiSettings?.is_active) {
-      return { type: 4, data: { content: 'AI responses are disabled.' } };
+      await editDiscordInteractionResponse(
+        interaction.application_id,
+        interaction.token,
+        'AI responses are disabled.'
+      );
+      return;
     }
 
     // Check business_id scoping
@@ -179,10 +203,14 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       }
     }
 
-    // Call AI handler asynchronously, respond with "thinking" message
-    sendDiscordMessage(botToken, channelId, `🤔 **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`);
+    // Edit deferred response with thinking message
+    await editDiscordInteractionResponse(
+      interaction.application_id,
+      interaction.token,
+      `🤔 **${discordUsername}** asked: "${messageText}"\n\n*Thinking...*`
+    );
 
-    // Fire AI handler with a small delay
+    // Fire AI handler asynchronously
     const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);
     handleAIResponse(
       matchedBot.user_id,
@@ -199,11 +227,13 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       discordHasMedia
     );
 
-    return {
-      type: 4,
-      data: { content: `🤔 Processing your message... I'll reply in <#${channelId}>.` },
-    };
+    return;
   }
 
-  return { type: 4, data: { content: 'Unknown command.' } };
+  // Unknown command
+  await editDiscordInteractionResponse(
+    interaction.application_id,
+    interaction.token,
+    'Unknown command.'
+  );
 }

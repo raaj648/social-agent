@@ -22,11 +22,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ type: 1 }, { status: 200 });
     }
 
-    // Dynamically import heavy command handler only for real commands
-    const { processDiscordInteraction } = await import('@/lib/discord/webhook');
-    const response = await processDiscordInteraction(interaction);
+    // Handle commands with deferred response (type 5)
+    // This avoids Discord's 3-second timeout while we do DB queries
+    if (interaction.type === 2) {
+      import('@/lib/discord/webhook').then(({ processDiscordInteraction }) => {
+        processDiscordInteraction(interaction).catch(console.error);
+      });
+      return NextResponse.json({ type: 5 }, { status: 200 });
+    }
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json({ type: 4, data: { content: 'Unknown interaction type.' } }, { status: 200 });
   } catch (error) {
     console.error('Discord webhook error:', error);
     return NextResponse.json({ type: 4, data: { content: 'An error occurred.' } }, { status: 200 });
