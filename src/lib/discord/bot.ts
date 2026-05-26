@@ -28,39 +28,10 @@ export async function sendDiscordMessage(
   text: string,
   interactionAppId?: string,
   interactionToken?: string,
-  webhookName?: string
+  _webhookName?: string
 ): Promise<boolean> {
   try {
-    // 1. Channel webhook (requires MANAGE_WEBHOOKS) — no badge, clean name
-    if (interactionAppId && interactionToken && webhookName) {
-      const webhook = await ensureChannelWebhook(botToken, channelId, webhookName);
-      if (webhook) {
-        const sent = await sendViaWebhook(webhook.id, webhook.token, text);
-        if (sent) {
-          await deleteInteractionResponse(interactionAppId, interactionToken);
-          return true;
-        }
-      } else {
-        console.warn('Discord webhook: ensureChannelWebhook returned null (MANAGE_WEBHOOKS missing?)');
-      }
-    }
-    // 2. Bot token channel POST (requires SEND_MESSAGES) — shows "BOT" badge
-    if (interactionAppId && interactionToken) {
-      const postUrl = `${DISCORD_API}/channels/${channelId}/messages`;
-      const postRes = await fetch(postUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bot ${botToken}`,
-        },
-        body: JSON.stringify({ content: text }),
-      });
-      if (postRes.ok) {
-        await deleteInteractionResponse(interactionAppId, interactionToken);
-        return true;
-      }
-    }
-    // 3. Interaction webhook PATCH (always works) — shows "APP" badge (last resort)
+    // Use interaction webhook PATCH — bypasses channel permissions, shows "APP" badge
     if (interactionAppId && interactionToken) {
       const url = `${DISCORD_API}/webhooks/${interactionAppId}/${interactionToken}/messages/@original`;
       const res = await fetch(url, {
@@ -75,7 +46,7 @@ export async function sendDiscordMessage(
       }
       return true;
     }
-    // No interaction context — direct channel POST
+    // Fallback to channel POST (no interaction context)
     const url = `${DISCORD_API}/channels/${channelId}/messages`;
     const res = await fetch(url, {
       method: 'POST',
@@ -110,91 +81,6 @@ export async function renameDiscordApp(botToken: string, name: string): Promise<
     });
     return res.ok;
   } catch {
-    return false;
-  }
-}
-
-async function getBotAvatarDataUri(botToken: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(`${DISCORD_API}/users/@me`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!res.ok) return undefined;
-    const data = await res.json();
-    if (!data.avatar) return undefined;
-    const ext = data.avatar.startsWith('a_') ? 'gif' : 'png';
-    const imgRes = await fetch(`https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.${ext}`);
-    if (!imgRes.ok) return undefined;
-    const buffer = await imgRes.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-    return `data:image/${ext};base64,${base64}`;
-  } catch {
-    return undefined;
-  }
-}
-
-export async function ensureChannelWebhook(
-  botToken: string,
-  channelId: string,
-  name: string
-): Promise<{ id: string; token: string } | null> {
-  try {
-    const listUrl = `${DISCORD_API}/channels/${channelId}/webhooks`;
-    const listRes = await fetch(listUrl, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (listRes.ok) {
-      const webhooks: any[] = await listRes.json();
-      const existing = webhooks.find((w: any) => w.name === name);
-      if (existing) return { id: existing.id, token: existing.token };
-    }
-
-    const avatar = await getBotAvatarDataUri(botToken);
-    const createUrl = `${DISCORD_API}/channels/${channelId}/webhooks`;
-    const createRes = await fetch(createUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bot ${botToken}`,
-      },
-      body: JSON.stringify({ name, ...(avatar ? { avatar } : {}) }),
-    });
-    if (!createRes.ok) return null;
-    const data = await createRes.json();
-    return { id: data.id, token: data.token };
-  } catch {
-    return null;
-  }
-}
-
-export async function sendViaWebhook(webhookId: string, webhookToken: string, content: string): Promise<boolean> {
-  try {
-    const url = `${DISCORD_API}/webhooks/${webhookId}/${webhookToken}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error('Discord webhook send error:', res.status, errBody);
-    }
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function deleteInteractionResponse(applicationId: string, interactionToken: string): Promise<boolean> {
-  try {
-    const url = `${DISCORD_API}/webhooks/${applicationId}/${interactionToken}/messages/@original`;
-    const res = await fetch(url, { method: 'DELETE' });
-    if (!res.ok) {
-      console.error('Discord deleteInteractionResponse error:', res.status);
-    }
-    return res.ok;
-  } catch (error) {
-    console.error('Discord deleteInteractionResponse exception:', error);
     return false;
   }
 }

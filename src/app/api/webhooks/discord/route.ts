@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     if (interaction.type === 2) {
       waitUntil(processDiscordInteraction(interaction));
-      return NextResponse.json({ type: 4, data: { content: '·' } }, { status: 200 });
+      return NextResponse.json({ type: 5 }, { status: 200 });
     }
 
     return NextResponse.json({ type: 4, data: { content: 'Unknown interaction type.' } }, { status: 200 });
