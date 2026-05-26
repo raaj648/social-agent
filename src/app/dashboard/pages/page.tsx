@@ -431,7 +431,11 @@ async function handleFacebookConnect() {
       if (data.botInfo) {
         setDiscordBotInfo(data.botInfo);
         setDiscordGuilds(data.guilds || []);
-        setDiscordWizardStep(2);
+        if (data.guilds && data.guilds.length > 0) {
+          handleDiscordLoadChannels(data.guilds[0].id);
+        } else {
+          setDiscordWizardStep(2);
+        }
       } else {
         toast.error(data.error || 'Invalid Discord bot token');
       }
