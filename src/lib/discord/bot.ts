@@ -31,8 +31,7 @@ export async function sendDiscordMessage(
   webhookName?: string
 ): Promise<boolean> {
   try {
-    // When interaction context and webhookName are available, use channel webhook
-    // to show a clean name without "APP" badge, then delete the interaction placeholder.
+    // 1. Channel webhook (requires MANAGE_WEBHOOKS) — no badge, clean name
     if (interactionAppId && interactionToken && webhookName) {
       const webhook = await ensureChannelWebhook(botToken, channelId, webhookName);
       if (webhook) {
@@ -41,9 +40,27 @@ export async function sendDiscordMessage(
           await deleteInteractionResponse(interactionAppId, interactionToken);
           return true;
         }
+      } else {
+        console.warn('Discord webhook: ensureChannelWebhook returned null (MANAGE_WEBHOOKS missing?)');
       }
     }
-    // Use interaction webhook PATCH when available — bypasses channel permissions
+    // 2. Bot token channel POST (requires SEND_MESSAGES) — shows "BOT" badge
+    if (interactionAppId && interactionToken) {
+      const postUrl = `${DISCORD_API}/channels/${channelId}/messages`;
+      const postRes = await fetch(postUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bot ${botToken}`,
+        },
+        body: JSON.stringify({ content: text }),
+      });
+      if (postRes.ok) {
+        await deleteInteractionResponse(interactionAppId, interactionToken);
+        return true;
+      }
+    }
+    // 3. Interaction webhook PATCH (always works) — shows "APP" badge (last resort)
     if (interactionAppId && interactionToken) {
       const url = `${DISCORD_API}/webhooks/${interactionAppId}/${interactionToken}/messages/@original`;
       const res = await fetch(url, {
@@ -58,7 +75,7 @@ export async function sendDiscordMessage(
       }
       return true;
     }
-    // Fallback to channel POST
+    // No interaction context — direct channel POST
     const url = `${DISCORD_API}/channels/${channelId}/messages`;
     const res = await fetch(url, {
       method: 'POST',
@@ -97,6 +114,25 @@ export async function renameDiscordApp(botToken: string, name: string): Promise<
   }
 }
 
+async function getBotAvatarDataUri(botToken: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    if (!data.avatar) return undefined;
+    const ext = data.avatar.startsWith('a_') ? 'gif' : 'png';
+    const imgRes = await fetch(`https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.${ext}`);
+    if (!imgRes.ok) return undefined;
+    const buffer = await imgRes.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    return `data:image/${ext};base64,${base64}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function ensureChannelWebhook(
   botToken: string,
   channelId: string,
@@ -113,6 +149,7 @@ export async function ensureChannelWebhook(
       if (existing) return { id: existing.id, token: existing.token };
     }
 
+    const avatar = await getBotAvatarDataUri(botToken);
     const createUrl = `${DISCORD_API}/channels/${channelId}/webhooks`;
     const createRes = await fetch(createUrl, {
       method: 'POST',
@@ -120,7 +157,7 @@ export async function ensureChannelWebhook(
         'Content-Type': 'application/json',
         Authorization: `Bot ${botToken}`,
       },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ...(avatar ? { avatar } : {}) }),
     });
     if (!createRes.ok) return null;
     const data = await createRes.json();
@@ -152,8 +189,12 @@ export async function deleteInteractionResponse(applicationId: string, interacti
   try {
     const url = `${DISCORD_API}/webhooks/${applicationId}/${interactionToken}/messages/@original`;
     const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok) {
+      console.error('Discord deleteInteractionResponse error:', res.status);
+    }
     return res.ok;
-  } catch {
+  } catch (error) {
+    console.error('Discord deleteInteractionResponse exception:', error);
     return false;
   }
 }
@@ -255,8 +296,13 @@ export async function editDiscordInteractionResponse(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error('Discord editInteractionResponse error:', res.status, errBody);
+    }
     return res.ok;
-  } catch {
+  } catch (error) {
+    console.error('Discord editInteractionResponse exception:', error);
     return false;
   }
 }
