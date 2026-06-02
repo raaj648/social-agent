@@ -67,3 +67,31 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const authSupabase = await createClient();
+    const { data: { user } } = await authSupabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { data: isAdmin } = await authSupabase.rpc('is_admin');
+    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    const supabase = await createAdminClient();
+    const body = await request.json();
+
+    if (!Array.isArray(body.ids) || body.ids.length === 0) {
+      return NextResponse.json({ error: 'ids must be a non-empty array' }, { status: 400 });
+    }
+
+    const { error, count } = await supabase
+      .from('model_pricing')
+      .delete({ count: 'estimated' })
+      .in('id', body.ids);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ deleted: count || body.ids.length });
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
+  }
+}

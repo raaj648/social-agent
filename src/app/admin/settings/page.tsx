@@ -88,6 +88,8 @@ export default function AdminSettingsPage() {
   const [fetchSelectedLoading, setFetchSelectedLoading] = useState(false);
   const [populateDefaultsLoading, setPopulateDefaultsLoading] = useState(false);
   const [rowSaving, setRowSaving] = useState(false);
+  const [deleteSelectedLoading, setDeleteSelectedLoading] = useState(false);
+  const [selectedPricingIds, setSelectedPricingIds] = useState<Set<string>>(new Set());
   const [fetchModelInput, setFetchModelInput] = useState('');
 
   useEffect(() => { checkAdminAndLoad(); }, []);
@@ -618,6 +620,29 @@ export default function AdminSettingsPage() {
                   <Save className="h-4 w-4" />
                   {populateDefaultsLoading ? 'Saving...' : 'Populate Defaults'}
                 </button>
+                {selectedPricingIds.size > 0 && (
+                  <button onClick={async () => {
+                    if (!confirm(`Delete ${selectedPricingIds.size} selected model pricing rows?`)) return;
+                    setDeleteSelectedLoading(true);
+                    try {
+                      const res = await fetch('/api/admin/owner/pricing', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: Array.from(selectedPricingIds) }),
+                      });
+                      if (res.ok) {
+                        toast.success(`Deleted ${selectedPricingIds.size} rows`);
+                        setSelectedPricingIds(new Set());
+                        checkAdminAndLoad();
+                      } else toast.error('Failed to delete selected');
+                    } catch { toast.error('Failed to delete selected'); }
+                    finally { setDeleteSelectedLoading(false); }
+                  }} disabled={deleteSelectedLoading}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-red-500 hover:to-rose-500 disabled:opacity-50">
+                    <Trash2 className="h-4 w-4" />
+                    {deleteSelectedLoading ? 'Deleting...' : `Delete Selected (${selectedPricingIds.size})`}
+                  </button>
+                )}
                 <button onClick={() => {
                   const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, is_auto_fetched: false, ai_providers: undefined, _isNew: true };
                   setModelPricing(prev => [...prev, newRow as any]);
@@ -639,25 +664,47 @@ export default function AdminSettingsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
-                    <th className="pb-3 pr-3 font-medium">Provider</th>
-                    <th className="pb-3 pr-3 font-medium">Model</th>
-                    <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
-                    <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
-                    <th className="pb-3 pr-3 font-medium">Source</th>
-                    <th className="pb-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {modelPricing.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-white/30">
+                    <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
+                      <th className="pb-3 pr-3 w-8">
+                        <input type="checkbox" checked={modelPricing.length > 0 && modelPricing.every(p => p.id && selectedPricingIds.has(p.id))}
+                          onChange={() => {
+                            if (modelPricing.every(p => p.id && selectedPricingIds.has(p.id))) {
+                              setSelectedPricingIds(new Set());
+                            } else {
+                              setSelectedPricingIds(new Set(modelPricing.filter(p => p.id).map(p => p.id)));
+                            }
+                          }}
+                          className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500" />
+                      </th>
+                      <th className="pb-3 pr-3 font-medium">Provider</th>
+                      <th className="pb-3 pr-3 font-medium">Model</th>
+                      <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
+                      <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
+                      <th className="pb-3 pr-3 font-medium">Source</th>
+                      <th className="pb-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {modelPricing.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-sm text-white/30">
                         No pricing data yet. Click "Fetch All" or "Add Model" to add prices.
                       </td>
                     </tr>
                   )}
-                  {modelPricing.map((pr, idx) => (
-                    <tr key={pr.id || `new-${idx}`} className="hover:bg-white/5 transition-colors">
+                    {modelPricing.map((pr, idx) => (
+                    <tr key={pr.id || `new-${idx}`} className={`hover:bg-white/5 transition-colors ${pr.id && selectedPricingIds.has(pr.id) ? 'bg-violet-500/10' : ''}`}>
+                      <td className="py-2.5 pr-3">
+                        {pr.id && (
+                          <input type="checkbox" checked={selectedPricingIds.has(pr.id)}
+                            onChange={() => {
+                              const next = new Set(selectedPricingIds);
+                              if (next.has(pr.id)) next.delete(pr.id); else next.add(pr.id);
+                              setSelectedPricingIds(next);
+                            }}
+                            className="rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500" />
+                        )}
+                      </td>
                       <td className="py-2.5 pr-3">
                         <select value={pr.provider_id} onChange={(e) => {
                           const updated = [...modelPricing];
@@ -726,18 +773,10 @@ export default function AdminSettingsPage() {
                           {pr.id && (
                             <button onClick={async () => {
                               if (!confirm('Delete this model pricing?')) return;
-                              // Since there's no DELETE endpoint, we'll just remove from UI
-                              // and rely on the PUT to not include it. For DB cleanup, we use a helper.
                               const res = await fetch('/api/admin/owner/pricing', {
-                                method: 'PUT',
+                                method: 'DELETE',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ pricing: modelPricing.filter(p => p.id !== pr.id).map(p => ({
-                                  provider_id: p.provider_id,
-                                  model_name: p.model_name,
-                                  input_price_per_1m_tokens: p.input_price_per_1m_tokens,
-                                  output_price_per_1m_tokens: p.output_price_per_1m_tokens,
-                                  is_auto_fetched: p.is_auto_fetched,
-                                })) }),
+                                body: JSON.stringify({ ids: [pr.id] }),
                               });
                               if (res.ok) {
                                 toast.success('Deleted');
