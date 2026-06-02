@@ -62,9 +62,6 @@ export default function AdminSettingsPage() {
   const [planSaving, setPlanSaving] = useState(false);
   const [newFeature, setNewFeature] = useState('');
 
-  const [pointCostText, setPointCostText] = useState(1);
-  const [pointCostImage, setPointCostImage] = useState(3);
-  const [pointCostVoice, setPointCostVoice] = useState(2);
   const [gateways, setGateways] = useState<any[]>([]);
   const [gatewayForm, setGatewayForm] = useState({ name: '', slug: '', is_active: false, config: '{}', sort_order: 0 });
   const [showGatewayForm, setShowGatewayForm] = useState(false);
@@ -127,9 +124,6 @@ export default function AdminSettingsPage() {
       const plansData = await plansRes.json();
       setPlans(plansData.plans || []);
 
-      if (data.point_cost_text_reply !== undefined) setPointCostText(Number(data.point_cost_text_reply));
-      if (data.point_cost_image_read !== undefined) setPointCostImage(Number(data.point_cost_image_read));
-      if (data.point_cost_voice_read !== undefined) setPointCostVoice(Number(data.point_cost_voice_read));
 
       // Load remaining data in parallel
       const [gwRes, peRes, cpRes, mpRes, provRes] = await Promise.all([
@@ -162,9 +156,6 @@ export default function AdminSettingsPage() {
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
-        point_cost_text_reply: pointCostText,
-        point_cost_image_read: pointCostImage,
-        point_cost_voice_read: pointCostVoice,
         signups_enabled: signupsEnabled,
         meta_app_id: metaAppId,
         platform_name: platformName,
@@ -516,34 +507,29 @@ export default function AdminSettingsPage() {
 
       {activeTab === 'billing' && (
         <div className="space-y-4">
-          {/* Point Costs */}
+          {/* Credit Costs (auto-calculated) */}
           <div className="rounded-2xl border border-white/10 p-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-white flex items-center gap-2"><CreditCard className="h-4 w-4 text-amber-400" /> Credit Costs</h3>
-                <p className="text-xs text-white/40 mt-0.5">Credits charged per action type. Simple pricing visible to users.</p>
+                <p className="text-xs text-white/40 mt-0.5">Credits are auto-calculated from Model Pricing. 1 credit = cost of ~250 tokens with the default text model.</p>
               </div>
-              <button onClick={handleSave} disabled={saving}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white px-5 py-2.5 text-sm font-medium hover:from-violet-500 hover:to-purple-500 transition-all disabled:opacity-50">
-                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {saving ? 'Saving...' : 'Save Settings'}
-              </button>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <label className="text-xs font-medium text-white/60 mb-1.5 block">Text Reply (credits)</label>
-                <input type="number" min={1} value={pointCostText} onChange={(e) => setPointCostText(parseInt(e.target.value) || 1)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <label className="text-xs font-medium text-white/60 mb-1 block">Text Reply</label>
+                <p className="text-sm text-white font-medium">Auto-calculated</p>
+                <p className="text-xs text-white/40 mt-0.5">Based on token usage × model price</p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-white/60 mb-1.5 block">Image Read (credits)</label>
-                <input type="number" min={1} value={pointCostImage} onChange={(e) => setPointCostImage(parseInt(e.target.value) || 1)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <label className="text-xs font-medium text-white/60 mb-1 block">Image Read</label>
+                <p className="text-sm text-white font-medium">Auto-calculated</p>
+                <p className="text-xs text-white/40 mt-0.5">Based on token usage × vision model price</p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-white/60 mb-1.5 block">Voice Read (credits)</label>
-                <input type="number" min={1} value={pointCostVoice} onChange={(e) => setPointCostVoice(parseInt(e.target.value) || 1)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <label className="text-xs font-medium text-white/60 mb-1 block">Voice Read</label>
+                <p className="text-sm text-white font-medium">Auto-calculated</p>
+                <p className="text-xs text-white/40 mt-0.5">Whisper ($0.04–0.36/hr) + reply token cost</p>
               </div>
             </div>
           </div>

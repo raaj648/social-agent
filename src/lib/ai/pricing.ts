@@ -1,4 +1,4 @@
-import type { TokenUsage, CostBreakdown } from '@/lib/ai/types';
+import type { TokenUsage, CostBreakdown, ActionType } from '@/lib/ai/types';
 
 export const DEFAULT_PRICING: Record<string, { input: number; output: number }> = {
   'openai/gpt-4o': { input: 2.50, output: 10.00 },
@@ -10,6 +10,8 @@ export const DEFAULT_PRICING: Record<string, { input: number; output: number }> 
   'google/gemini-2.0-flash': { input: 0.10, output: 0.40 },
   'google/gemini-2.0-flash-lite': { input: 0.075, output: 0.30 },
   'google/gemini-2.5-pro': { input: 1.25, output: 5.00 },
+  'deepseek/deepseek-v4-flash': { input: 0.0983, output: 0.1966 },
+  'deepseek/deepseek-v4-pro': { input: 1.50, output: 4.00 },
   'deepseek/deepseek-chat': { input: 0.27, output: 1.10 },
   'deepseek/deepseek-reasoner': { input: 0.55, output: 2.19 },
   'openai/whisper-1': { input: 6.00, output: 0 },
@@ -51,6 +53,47 @@ export function calculateCost(tokens: TokenUsage, pricing: { input: number; outp
     output_cost,
     total_cost: input_cost + output_cost,
   };
+}
+
+export function getBaselineCost(
+  dbPricingMap: Map<string, { input: number; output: number }>,
+  defaultModel: string,
+  defaultProviderId: string
+): number {
+  const modelPricing = getModelPrice(defaultModel, defaultProviderId, dbPricingMap);
+  if (modelPricing.input === 0 && modelPricing.output === 0) {
+    return 0.000025;
+  }
+  return (200 / 1_000_000 * modelPricing.input) + (50 / 1_000_000 * modelPricing.output);
+}
+
+export function getWhisperCost(durationSeconds: number, providerType: string): number {
+  const ratePerHour = providerType === 'openai' ? 0.36 : 0.04;
+  return (durationSeconds / 3600) * ratePerHour;
+}
+
+export function calculateActionCredits(params: {
+  actionType: ActionType;
+  tokenUsage: TokenUsage;
+  modelPricing: { input: number; output: number };
+  baselineCost: number;
+  whisperDurationSeconds?: number;
+  whisperProviderType?: string;
+}): number {
+  let realCost: number;
+
+  if (params.actionType === 'voice_read' && params.whisperDurationSeconds) {
+    const whisperCost = getWhisperCost(
+      params.whisperDurationSeconds,
+      params.whisperProviderType || 'openrouter'
+    );
+    const textCost = calculateCost(params.tokenUsage, params.modelPricing).total_cost;
+    realCost = whisperCost + textCost;
+  } else {
+    realCost = calculateCost(params.tokenUsage, params.modelPricing).total_cost;
+  }
+
+  return Math.max(1, Math.ceil(realCost / params.baselineCost));
 }
 
 export async function fetchOpenRouterPricing(): Promise<Record<string, { input: number; output: number }>> {

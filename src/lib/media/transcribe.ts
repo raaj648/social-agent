@@ -11,7 +11,7 @@ interface TranscribeOptions {
 export async function transcribeVoice(
   voice: VoiceData,
   options: TranscribeOptions
-): Promise<string | null> {
+): Promise<{ transcript: string; durationSeconds: number } | null> {
   const apiKey = options.apiKey;
   const model = options.model || 'openai/whisper-large-v3-turbo';
 
@@ -46,7 +46,7 @@ export async function transcribeVoice(
   const blob = new Blob([new Uint8Array(voice.data)], { type: voice.mimeType });
   formData.append('file', blob, `audio.${ext}`);
   formData.append('model', model);
-  formData.append('response_format', 'json');
+  formData.append('response_format', 'verbose_json');
 
   try {
     const res = await fetch(endpoint, {
@@ -63,8 +63,9 @@ export async function transcribeVoice(
       return null;
     }
 
-    const json = await res.json() as { text?: string };
-    return json.text || null;
+    const json = await res.json() as { text?: string; duration?: number };
+    if (!json.text) return null;
+    return { transcript: json.text, durationSeconds: json.duration ?? voice.durationSeconds ?? 30 };
   } catch (err) {
     console.error('Transcription error:', err);
     return null;

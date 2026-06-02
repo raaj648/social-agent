@@ -11,7 +11,7 @@ import { transcribeVoice } from '@/lib/media/transcribe';
 import { resizeImage } from '@/lib/media/resize';
 import { detectProviderType, type ProviderType } from '@/lib/ai/provider';
 import { executeWithFallback, AllRetriesFailedError } from '@/lib/ai/retry';
-import { getModelPrice, calculateCost } from '@/lib/ai/pricing';
+import { getModelPrice, calculateCost, getBaselineCost, calculateActionCredits } from '@/lib/ai/pricing';
 import type { RetryableProvider, TokenUsage, ActionType } from '@/lib/ai/types';
 import type { MediaBundle } from '@/lib/media/types';
 import type { AISettings } from '@/types';
@@ -438,25 +438,22 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
   }
 
   // Fetch ALL active providers + settings
-  const [{ data: allProviders }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }, { data: mediaImageMaxCountCfg }, { data: mediaImageModelCfg }, { data: mediaImageProviderTypeCfg }, { data: mediaImageProviderIdCfg }, { data: mediaImageMaxSizeCfg }, { data: mediaVoiceEnabledCfg }, { data: mediaVoiceProviderIdCfg }, { data: mediaVoiceModelCfg }, { data: pointCostTextCfg }, { data: pointCostImageCfg }, { data: pointCostVoiceCfg }] = await Promise.all([
-    supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order'),
-    supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_image_max_count').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_image_model').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_type').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_id').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_image_max_size').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_voice_enabled').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_voice_provider_id').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'media_voice_model').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'point_cost_text_reply').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'point_cost_image_read').maybeSingle(),
-    supabase.from('platform_settings').select('value').eq('key', 'point_cost_voice_read').maybeSingle(),
-  ]);
+    const [{ data: allProviders }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }, { data: mediaImageMaxCountCfg }, { data: mediaImageModelCfg }, { data: mediaImageProviderTypeCfg }, { data: mediaImageProviderIdCfg }, { data: mediaImageMaxSizeCfg }, { data: mediaVoiceEnabledCfg }, { data: mediaVoiceProviderIdCfg }, { data: mediaVoiceModelCfg }] = await Promise.all([
+      supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order'),
+      supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_max_count').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_model').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_type').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_id').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_max_size').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_provider_id').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_model').maybeSingle(),
+    ]);
   const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
   const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
   const defaultMaxTokens = tokensCfg?.value ? Number(tokensCfg.value) : 500;
@@ -471,12 +468,6 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     media_voice_enabled: mediaVoiceEnabledCfg?.value ?? true,
     media_voice_provider_id: mediaVoiceProviderIdCfg?.value || '',
     media_voice_model: mediaVoiceModelCfg?.value || 'openai/whisper-large-v3-turbo',
-  };
-
-  const pointCosts = {
-    text_reply: Number(pointCostTextCfg?.value) || 1,
-    image_read: Number(pointCostImageCfg?.value) || 3,
-    voice_read: Number(pointCostVoiceCfg?.value) || 2,
   };
 
   // Build provider groups by role
@@ -667,31 +658,7 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     primaryProviders = [mediaRouterResult.visionProvider, ...textProviders];
   }
 
-  // Calculate point cost and deduct before AI call
   const actionType: ActionType = hasMediaImages ? 'image_read' : hasVoice ? 'voice_read' : 'text_reply';
-  const pointCost = actionType === 'text_reply' ? pointCosts.text_reply : actionType === 'image_read' ? pointCosts.image_read : pointCosts.voice_read;
-  const { data: deducted, error: deductError } = await supabase.rpc('deduct_points', {
-    p_user_id: channel.user_id,
-    p_amount: pointCost,
-  });
-  if (deductError) {
-    console.error('Points deduction error:', deductError);
-  } else if (deducted === false) {
-    console.warn(`[webhook] User ${channel.user_id} insufficient points (needed ${pointCost})`);
-    if (aiSettings.fallback_response) {
-      const sent = await sendPlatformReply(platform, senderId, aiSettings.fallback_response, accessToken, channel);
-      if (!sent) console.error(`[webhook] Failed to send no-credits message to ${senderId} on ${platform}`);
-    }
-    return;
-  }
-
-  // Fire-and-forget: update subscription points_used
-  if (deducted === true) {
-    supabase.rpc('update_subscription_points_used', {
-      p_user_id: channel.user_id,
-      p_amount: pointCost,
-    }).then(() => {}, () => {});
-  }
 
   console.log(`[webhook] About to call AI for conversation ${conversationId}. Model: ${resolvedModel}, Text providers: ${textProviders.length}, Vision providers: ${visionProviders.length}, Voice providers: ${voiceProviders.length}, Message: "${messageText.substring(0, 50)}"`);
 
@@ -717,17 +684,19 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
 
     // Transcribe voice if present (use voice provider if available)
     const primaryVoiceProvider = voiceProviders[0] || textProviders[0];
+    let voiceDurationSeconds: number | undefined;
     if (hasVoice && !mediaBundle!.transcript && primaryVoiceProvider) {
       try {
-        const transcript = await transcribeVoice(mediaBundle!.voice!, {
+        const result = await transcribeVoice(mediaBundle!.voice!, {
           apiKey: primaryVoiceProvider.config.apiKey,
           model: String(mediaSettings.media_voice_model || 'openai/whisper-large-v3-turbo'),
           baseUrl: primaryVoiceProvider.config.baseUrl || undefined,
           providerType: primaryVoiceProvider.config.providerType,
         });
-        if (transcript) {
-          mediaBundle!.transcript = transcript;
-          const transcriptText = `[Transcribed voice: "${transcript}"]`;
+        if (result) {
+          mediaBundle!.transcript = result.transcript;
+          voiceDurationSeconds = result.durationSeconds;
+          const transcriptText = `[Transcribed voice: "${result.transcript}"]`;
           userContent = typeof userContent === 'string'
             ? `${userContent}\n\n${transcriptText}`
             : [...userContent, { type: 'text' as const, text: transcriptText }];
@@ -911,6 +880,36 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
     const pricing = getModelPrice(resolvedModel, textProviderUsed?.id || '', dbPricingMap);
     const cost = calculateCost(tokenUsage, pricing);
 
+    // Calculate proportional credits and deduct after AI call
+    const baselineCost = getBaselineCost(dbPricingMap, activeModel, textProviders[0]?.id || '');
+    const resolvedPricing = getModelPrice(resolvedModel, textProviderUsed?.id || '', dbPricingMap);
+    const creditsToDeduct = calculateActionCredits({
+      actionType,
+      tokenUsage,
+      modelPricing: resolvedPricing,
+      baselineCost,
+      whisperDurationSeconds: voiceDurationSeconds,
+      whisperProviderType: primaryVoiceProvider?.config.providerType,
+    });
+
+    const { data: deducted, error: deductError } = await supabase.rpc('deduct_points', {
+      p_user_id: channel.user_id,
+      p_amount: creditsToDeduct,
+    });
+    if (deductError) {
+      console.error('Points deduction error:', deductError);
+    } else if (deducted === false) {
+      console.warn(`[webhook] User ${channel.user_id} insufficient points (needed ${creditsToDeduct})`);
+    }
+
+    // Fire-and-forget: update subscription points_used
+    if (deducted === true) {
+      supabase.rpc('update_subscription_points_used', {
+        p_user_id: channel.user_id,
+        p_amount: creditsToDeduct,
+      }).then(() => {}, () => {});
+    }
+
     await supabase.from('usage_logs').insert({
       user_id: channel.user_id,
       action: 'ai_reply',
@@ -926,8 +925,8 @@ export async function processWebhookMessage(payload: WebhookPayload): Promise<vo
       input_cost: cost.input_cost,
       output_cost: cost.output_cost,
       total_cost: cost.total_cost,
-      points_charged: pointCost,
-      metadata: { conversation_id: conversationId, message_length: messageText.length, has_image: !!(mediaBundle?.images?.length), has_voice: !!hasVoice },
+      points_charged: creditsToDeduct,
+      metadata: { conversation_id: conversationId, message_length: messageText.length, has_image: !!(mediaBundle?.images?.length), has_voice: !!hasVoice, voice_duration_seconds: actionType === 'voice_read' ? voiceDurationSeconds ?? null : null },
     });
 
     await supabase
