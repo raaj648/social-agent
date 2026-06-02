@@ -53,6 +53,7 @@ export async function PUT(request: NextRequest) {
           model_name: item.model_name,
           input_price_per_1m_tokens: Number(item.input_price_per_1m_tokens) || 0,
           output_price_per_1m_tokens: Number(item.output_price_per_1m_tokens) || 0,
+          pricing_unit: item.pricing_unit || 'per_1m_tokens',
           is_auto_fetched: item.is_auto_fetched || false,
         }, { onConflict: 'provider_id,model_name' });
 

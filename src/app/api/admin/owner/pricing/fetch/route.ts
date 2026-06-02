@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { fetchOpenRouterPricing, DEFAULT_PRICING } from '@/lib/ai/pricing';
+import { fetchOpenRouterPricing, DEFAULT_PRICING, PRICING_UNITS } from '@/lib/ai/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
             model_name: modelName,
             input_price_per_1m_tokens: prices.input,
             output_price_per_1m_tokens: prices.output,
+            pricing_unit: 'per_1m_tokens',
             is_auto_fetched: true,
           }, { onConflict: 'provider_id,model_name' });
 
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest) {
       for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
         if (!matchesKnownModel(modelName, targetModels)) continue;
         if (openRouterModelIds.has(modelName)) continue;
+        const unit = PRICING_UNITS[modelName] || 'per_1m_tokens';
         const { error } = await supabase
           .from('model_pricing')
           .upsert({
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
             model_name: modelName,
             input_price_per_1m_tokens: prices.input,
             output_price_per_1m_tokens: prices.output,
+            pricing_unit: unit,
             is_auto_fetched: false,
           }, { onConflict: 'provider_id,model_name' });
 

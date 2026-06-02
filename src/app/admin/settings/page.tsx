@@ -79,7 +79,7 @@ export default function AdminSettingsPage() {
   const [purchaseFilter, setPurchaseFilter] = useState('pending');
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
-  const [modelPricing, setModelPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
+  const [modelPricing, setModelPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; pricing_unit: string; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
   const [allProviders, setAllProviders] = useState<Array<{ id: string; name: string }>>([]);
   const [fetchAllLoading, setFetchAllLoading] = useState(false);
   const [fetchSelectedLoading, setFetchSelectedLoading] = useState(false);
@@ -630,7 +630,7 @@ export default function AdminSettingsPage() {
                   </button>
                 )}
                 <button onClick={() => {
-                  const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, is_auto_fetched: false, ai_providers: undefined, _isNew: true };
+                  const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, pricing_unit: 'per_1m_tokens', is_auto_fetched: false, ai_providers: undefined, _isNew: true };
                   setModelPricing(prev => [...prev, newRow as any]);
                 }} disabled={allProviders.length === 0}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-violet-500 hover:to-purple-500 disabled:opacity-50">
@@ -664,8 +664,8 @@ export default function AdminSettingsPage() {
                       </th>
                       <th className="pb-3 pr-3 font-medium">Provider</th>
                       <th className="pb-3 pr-3 font-medium">Model</th>
-                      <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
-                      <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
+                      <th className="pb-3 pr-3 font-medium">Price</th>
+                      <th className="pb-3 pr-3 font-medium">Unit</th>
                       <th className="pb-3 pr-3 font-medium">Source</th>
                       <th className="pb-3 font-medium">Actions</th>
                     </tr>
@@ -712,20 +712,41 @@ export default function AdminSettingsPage() {
                           className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50 font-mono" />
                       </td>
                       <td className="py-2.5 pr-3">
-                        <input type="number" step={0.000001} min={0} value={pr.input_price_per_1m_tokens} onChange={(e) => {
-                          const updated = [...modelPricing];
-                          updated[idx] = { ...updated[idx], input_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
-                          setModelPricing(updated);
-                        }}
-                          className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" />
+                        {pr.pricing_unit === 'per_hour' ? (
+                          <input type="number" step={0.001} min={0} value={pr.input_price_per_1m_tokens} onChange={(e) => {
+                            const updated = [...modelPricing];
+                            updated[idx] = { ...updated[idx], input_price_per_1m_tokens: parseFloat(e.target.value) || 0, output_price_per_1m_tokens: 0 };
+                            setModelPricing(updated);
+                          }}
+                            className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" />
+                        ) : (
+                          <div className="flex gap-1">
+                            <input type="number" step={0.000001} min={0} value={pr.input_price_per_1m_tokens} onChange={(e) => {
+                              const updated = [...modelPricing];
+                              updated[idx] = { ...updated[idx], input_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
+                              setModelPricing(updated);
+                            }}
+                              className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" placeholder="Input" />
+                            <span className="text-white/20 self-center">/</span>
+                            <input type="number" step={0.000001} min={0} value={pr.output_price_per_1m_tokens} onChange={(e) => {
+                              const updated = [...modelPricing];
+                              updated[idx] = { ...updated[idx], output_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
+                              setModelPricing(updated);
+                            }}
+                              className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" placeholder="Output" />
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 pr-3">
-                        <input type="number" step={0.000001} min={0} value={pr.output_price_per_1m_tokens} onChange={(e) => {
+                        <select value={pr.pricing_unit} onChange={(e) => {
                           const updated = [...modelPricing];
-                          updated[idx] = { ...updated[idx], output_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
+                          updated[idx] = { ...updated[idx], pricing_unit: e.target.value };
                           setModelPricing(updated);
                         }}
-                          className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" />
+                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50">
+                          <option value="per_1m_tokens" className="bg-gray-900">per 1M tokens</option>
+                          <option value="per_hour" className="bg-gray-900">per hour</option>
+                        </select>
                       </td>
                       <td className="py-2.5 pr-3 text-sm text-white/40">{pr.is_auto_fetched ? 'Auto' : 'Manual'}</td>
                       <td className="py-2.5">
@@ -743,6 +764,7 @@ export default function AdminSettingsPage() {
                                   model_name: pr.model_name.trim(),
                                   input_price_per_1m_tokens: pr.input_price_per_1m_tokens,
                                   output_price_per_1m_tokens: pr.output_price_per_1m_tokens,
+                                  pricing_unit: pr.pricing_unit || 'per_1m_tokens',
                                   is_auto_fetched: false,
                                 }]}),
                               });

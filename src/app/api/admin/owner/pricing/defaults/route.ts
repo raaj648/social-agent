@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { DEFAULT_PRICING } from '@/lib/ai/pricing';
+import { DEFAULT_PRICING, PRICING_UNITS } from '@/lib/ai/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +64,7 @@ export async function POST() {
 
     for (const provider of providers) {
       for (const entry of modelEntries) {
+        const unit = PRICING_UNITS[entry.model] || 'per_1m_tokens';
         const { error } = await supabase
           .from('model_pricing')
           .upsert({
@@ -71,6 +72,7 @@ export async function POST() {
             model_name: entry.model,
             input_price_per_1m_tokens: entry.input,
             output_price_per_1m_tokens: entry.output,
+            pricing_unit: unit,
             is_auto_fetched: false,
           }, { onConflict: 'provider_id,model_name' });
 
@@ -86,6 +88,7 @@ export async function POST() {
           const baseName = modelName.split('/').pop()!;
           if (existingDefaults.has(baseName)) continue;
         }
+        const unit = PRICING_UNITS[modelName] || 'per_1m_tokens';
         const { error } = await supabase
           .from('model_pricing')
           .upsert({
@@ -93,6 +96,7 @@ export async function POST() {
             model_name: modelName,
             input_price_per_1m_tokens: 0,
             output_price_per_1m_tokens: 0,
+            pricing_unit: unit,
             is_auto_fetched: false,
           }, { onConflict: 'provider_id,model_name' });
 

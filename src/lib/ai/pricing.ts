@@ -14,8 +14,13 @@ export const DEFAULT_PRICING: Record<string, { input: number; output: number }> 
   'deepseek/deepseek-v4-pro': { input: 1.50, output: 4.00 },
   'deepseek/deepseek-chat': { input: 0.27, output: 1.10 },
   'deepseek/deepseek-reasoner': { input: 0.55, output: 2.19 },
-  'openai/whisper-1': { input: 6.00, output: 0 },
-  'openai/whisper-large-v3-turbo': { input: 6.00, output: 0 },
+  'openai/whisper-1': { input: 0.36, output: 0 },
+  'openai/whisper-large-v3-turbo': { input: 0.36, output: 0 },
+};
+
+export const PRICING_UNITS: Record<string, 'per_1m_tokens' | 'per_hour'> = {
+  'openai/whisper-1': 'per_hour',
+  'openai/whisper-large-v3-turbo': 'per_hour',
 };
 
 export function getModelPrice(
