@@ -1,6 +1,6 @@
 import type { TokenUsage, CostBreakdown } from '@/lib/ai/types';
 
-const DEFAULT_PRICING: Record<string, { input: number; output: number }> = {
+export const DEFAULT_PRICING: Record<string, { input: number; output: number }> = {
   'openai/gpt-4o': { input: 2.50, output: 10.00 },
   'openai/gpt-4o-mini': { input: 0.15, output: 0.60 },
   'openai/gpt-4o-audio-preview': { input: 2.50, output: 10.00 },
@@ -10,6 +10,7 @@ const DEFAULT_PRICING: Record<string, { input: number; output: number }> = {
   'deepseek/deepseek-chat': { input: 0.27, output: 1.10 },
   'deepseek/deepseek-reasoner': { input: 0.55, output: 2.19 },
   'openai/whisper-1': { input: 6.00, output: 0 },
+  'openai/whisper-large-v3-turbo': { input: 6.00, output: 0 },
 };
 
 export function getModelPrice(

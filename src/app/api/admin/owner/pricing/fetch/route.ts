@@ -1,11 +1,44 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { fetchOpenRouterPricing } from '@/lib/ai/pricing';
+import { fetchOpenRouterPricing, DEFAULT_PRICING } from '@/lib/ai/pricing';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+function buildKnownModels(dbModels: string[], platformSettings: Record<string, string>): Set<string> {
+  const known = new Set<string>();
+
+  // All keys from DEFAULT_PRICING
+  for (const key of Object.keys(DEFAULT_PRICING)) {
+    known.add(key);
+    // Also add base name (after the /)
+    if (key.includes('/')) known.add(key.split('/').pop()!);
+  }
+
+  // All model_names already in the DB
+  for (const m of dbModels) known.add(m);
+
+  // Default media models from platform_settings
+  const mediaImageModel = platformSettings['media_image_model'];
+  const mediaVoiceModel = platformSettings['media_voice_model'];
+  if (mediaImageModel) known.add(mediaImageModel);
+  if (mediaVoiceModel) known.add(mediaVoiceModel);
+
+  return known;
+}
+
+function matchesKnownModel(openRouterModelId: string, knownModels: Set<string>): boolean {
+  if (knownModels.has(openRouterModelId)) return true;
+  const baseName = openRouterModelId.includes('/') ? openRouterModelId.split('/').pop()! : openRouterModelId;
+  if (knownModels.has(baseName)) return true;
+  for (const known of Array.from(knownModels)) {
+    if (openRouterModelId.startsWith(known) || openRouterModelId.includes(known)) return true;
+    if (known.startsWith(openRouterModelId)) return true;
+  }
+  return false;
+}
+
+export async function POST(request?: NextRequest) {
   try {
     const authSupabase = await createClient();
     const { data: { user } } = await authSupabase.auth.getUser();
@@ -14,6 +47,40 @@ export async function POST() {
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const supabase = await createAdminClient();
+
+    let targetModels: Set<string> | null = null;
+
+    // Parse request body if provided
+    if (request) {
+      try {
+        const body = await request.json();
+        if (Array.isArray(body.models) && body.models.length > 0) {
+          targetModels = new Set(body.models.map((m: string) => m.trim()).filter(Boolean));
+        }
+      } catch { /* no body or invalid JSON — use default behavior */ }
+    }
+
+    // If no explicit models requested, build known model set from project defaults
+    if (!targetModels) {
+      const { data: existingPricing } = await supabase
+        .from('model_pricing')
+        .select('model_name');
+
+      const { data: settingsRows } = await supabase
+        .from('platform_settings')
+        .select('key, value')
+        .in('key', ['media_image_model', 'media_voice_model']);
+
+      const platformSettings: Record<string, string> = {};
+      if (settingsRows) {
+        for (const row of settingsRows) {
+          platformSettings[row.key] = String(row.value);
+        }
+      }
+
+      const dbModelNames = (existingPricing || []).map((r: any) => r.model_name);
+      targetModels = buildKnownModels(dbModelNames, platformSettings);
+    }
 
     // Get all OpenRouter providers
     const { data: orProviders } = await supabase
@@ -29,10 +96,13 @@ export async function POST() {
     // Fetch pricing from OpenRouter API
     const remotePrices = await fetchOpenRouterPricing();
     let updated = 0;
+    let matchedModels = 0;
 
-    // Upsert pricing for each OpenRouter provider
+    // Upsert pricing for each OpenRouter provider, only for target models
     for (const provider of orProviders) {
       for (const [modelName, prices] of Object.entries(remotePrices)) {
+        if (!matchesKnownModel(modelName, targetModels)) continue;
+        matchedModels++;
         const { error } = await supabase
           .from('model_pricing')
           .upsert({
@@ -47,7 +117,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ updated, total: Object.keys(remotePrices).length });
+    return NextResponse.json({ updated, total: Object.keys(remotePrices).length, matched: matchedModels });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

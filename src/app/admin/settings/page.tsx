@@ -85,6 +85,7 @@ export default function AdminSettingsPage() {
   const [modelPricing, setModelPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
   const [allProviders, setAllProviders] = useState<Array<{ id: string; name: string }>>([]);
   const [modelPricingSaving, setModelPricingSaving] = useState(false);
+  const [fetchModelInput, setFetchModelInput] = useState('');
 
   useEffect(() => { checkAdminAndLoad(); }, []);
 
@@ -560,13 +561,61 @@ export default function AdminSettingsPage() {
                       const d = await res.json();
                       toast.success(`Updated ${d.updated} model prices from OpenRouter`);
                       checkAdminAndLoad();
-                    } else toast.error('Failed to fetch pricing');
+                    } else {
+                      const err = await res.json().catch(() => null);
+                      toast.error(err?.error || 'Failed to fetch pricing');
+                    }
                   } catch { toast.error('Failed to fetch pricing'); }
                   finally { setModelPricingSaving(false); }
                 }} disabled={modelPricingSaving}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-amber-500 hover:to-orange-500 disabled:opacity-50">
                   <RefreshCw className={`h-4 w-4 ${modelPricingSaving ? 'animate-spin' : ''}`} />
-                  {modelPricingSaving ? 'Fetching...' : 'Fetch from OpenRouter'}
+                  {modelPricingSaving ? 'Fetching...' : 'Fetch All'}
+                </button>
+                <button onClick={async () => {
+                  if (!fetchModelInput.trim()) { toast.error('Enter model names separated by commas'); return; }
+                  setModelPricingSaving(true);
+                  const models = fetchModelInput.split(',').map(m => m.trim()).filter(Boolean);
+                  try {
+                    const res = await fetch('/api/admin/owner/pricing/fetch', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ models }),
+                    });
+                    if (res.ok) {
+                      const d = await res.json();
+                      toast.success(`Updated ${d.updated} model prices from OpenRouter`);
+                      setFetchModelInput('');
+                      checkAdminAndLoad();
+                    } else {
+                      const err = await res.json().catch(() => null);
+                      toast.error(err?.error || 'Failed to fetch pricing');
+                    }
+                  } catch { toast.error('Failed to fetch pricing'); }
+                  finally { setModelPricingSaving(false); }
+                }} disabled={modelPricingSaving || !fetchModelInput.trim()}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50">
+                  <RefreshCw className={`h-4 w-4 ${modelPricingSaving ? 'animate-spin' : ''}`} />
+                  {modelPricingSaving ? 'Fetching...' : 'Fetch Selected'}
+                </button>
+                <button onClick={async () => {
+                  setModelPricingSaving(true);
+                  try {
+                    const res = await fetch('/api/admin/owner/pricing/defaults', { method: 'POST' });
+                    if (res.ok) {
+                      const d = await res.json();
+                      toast.success(`Populated ${d.updated} default model prices`);
+                      checkAdminAndLoad();
+                    } else {
+                      const err = await res.json().catch(() => null);
+                      toast.error(err?.error || 'Failed to populate defaults');
+                    }
+                  } catch { toast.error('Failed to populate defaults'); }
+                  finally { setModelPricingSaving(false); }
+                }} disabled={modelPricingSaving}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-violet-500 hover:to-purple-500 disabled:opacity-50">
+                  <Save className="h-4 w-4" />
+                  {modelPricingSaving ? 'Saving...' : 'Populate Defaults'}
                 </button>
                 <button onClick={() => {
                   const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, is_auto_fetched: false, ai_providers: undefined, _isNew: true };
@@ -576,6 +625,15 @@ export default function AdminSettingsPage() {
                   <Plus className="h-4 w-4" /> Add Model
                 </button>
               </div>
+            </div>
+            <div className="mb-3">
+              <div className="flex items-center gap-2">
+                <input value={fetchModelInput} onChange={(e) => setFetchModelInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { document.getElementById('fetch-selected-btn')?.click(); } }}
+                  placeholder="Specific models to fetch: openai/gpt-4o, openai/whisper-large-v3-turbo, ..."
+                  className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50" />
+              </div>
+              <p className="text-xs text-white/30 mt-1.5">Enter model names separated by commas. "Fetch All" auto-detects models used in your project. "Populate Defaults" adds hardcoded prices for all known models.</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -593,7 +651,7 @@ export default function AdminSettingsPage() {
                   {modelPricing.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-sm text-white/30">
-                        No pricing data yet. Click "Fetch from OpenRouter" or "Add Model" to add prices.
+                        No pricing data yet. Click "Fetch All" or "Add Model" to add prices.
                       </td>
                     </tr>
                   )}
