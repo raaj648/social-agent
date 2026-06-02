@@ -84,7 +84,10 @@ export default function AdminSettingsPage() {
 
   const [modelPricing, setModelPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
   const [allProviders, setAllProviders] = useState<Array<{ id: string; name: string }>>([]);
-  const [modelPricingSaving, setModelPricingSaving] = useState(false);
+  const [fetchAllLoading, setFetchAllLoading] = useState(false);
+  const [fetchSelectedLoading, setFetchSelectedLoading] = useState(false);
+  const [populateDefaultsLoading, setPopulateDefaultsLoading] = useState(false);
+  const [rowSaving, setRowSaving] = useState(false);
   const [fetchModelInput, setFetchModelInput] = useState('');
 
   useEffect(() => { checkAdminAndLoad(); }, []);
@@ -554,7 +557,7 @@ export default function AdminSettingsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={async () => {
-                  setModelPricingSaving(true);
+                  setFetchAllLoading(true);
                   try {
                     const res = await fetch('/api/admin/owner/pricing/fetch', { method: 'POST' });
                     if (res.ok) {
@@ -566,15 +569,15 @@ export default function AdminSettingsPage() {
                       toast.error(err?.error || 'Failed to fetch pricing');
                     }
                   } catch { toast.error('Failed to fetch pricing'); }
-                  finally { setModelPricingSaving(false); }
-                }} disabled={modelPricingSaving}
+                  finally { setFetchAllLoading(false); }
+                }} disabled={fetchAllLoading}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-amber-500 hover:to-orange-500 disabled:opacity-50">
-                  <RefreshCw className={`h-4 w-4 ${modelPricingSaving ? 'animate-spin' : ''}`} />
-                  {modelPricingSaving ? 'Fetching...' : 'Fetch All'}
+                  <RefreshCw className={`h-4 w-4 ${fetchAllLoading ? 'animate-spin' : ''}`} />
+                  {fetchAllLoading ? 'Fetching...' : 'Fetch All'}
                 </button>
-                <button onClick={async () => {
+                <button id="fetch-selected-btn" onClick={async () => {
                   if (!fetchModelInput.trim()) { toast.error('Enter model names separated by commas'); return; }
-                  setModelPricingSaving(true);
+                  setFetchSelectedLoading(true);
                   const models = fetchModelInput.split(',').map(m => m.trim()).filter(Boolean);
                   try {
                     const res = await fetch('/api/admin/owner/pricing/fetch', {
@@ -592,14 +595,14 @@ export default function AdminSettingsPage() {
                       toast.error(err?.error || 'Failed to fetch pricing');
                     }
                   } catch { toast.error('Failed to fetch pricing'); }
-                  finally { setModelPricingSaving(false); }
-                }} disabled={modelPricingSaving || !fetchModelInput.trim()}
+                  finally { setFetchSelectedLoading(false); }
+                }} disabled={fetchSelectedLoading || !fetchModelInput.trim()}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50">
-                  <RefreshCw className={`h-4 w-4 ${modelPricingSaving ? 'animate-spin' : ''}`} />
-                  {modelPricingSaving ? 'Fetching...' : 'Fetch Selected'}
+                  <RefreshCw className={`h-4 w-4 ${fetchSelectedLoading ? 'animate-spin' : ''}`} />
+                  {fetchSelectedLoading ? 'Fetching...' : 'Fetch Selected'}
                 </button>
                 <button onClick={async () => {
-                  setModelPricingSaving(true);
+                  setPopulateDefaultsLoading(true);
                   try {
                     const res = await fetch('/api/admin/owner/pricing/defaults', { method: 'POST' });
                     if (res.ok) {
@@ -611,11 +614,11 @@ export default function AdminSettingsPage() {
                       toast.error(err?.error || 'Failed to populate defaults');
                     }
                   } catch { toast.error('Failed to populate defaults'); }
-                  finally { setModelPricingSaving(false); }
-                }} disabled={modelPricingSaving}
+                  finally { setPopulateDefaultsLoading(false); }
+                }} disabled={populateDefaultsLoading}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-violet-500 hover:to-purple-500 disabled:opacity-50">
                   <Save className="h-4 w-4" />
-                  {modelPricingSaving ? 'Saving...' : 'Populate Defaults'}
+                  {populateDefaultsLoading ? 'Saving...' : 'Populate Defaults'}
                 </button>
                 <button onClick={() => {
                   const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, is_auto_fetched: false, ai_providers: undefined, _isNew: true };
@@ -699,7 +702,7 @@ export default function AdminSettingsPage() {
                           <button onClick={async () => {
                             // Save single row
                             if (!pr.provider_id || !pr.model_name.trim()) { toast.error('Provider and model required'); return; }
-                            setModelPricingSaving(true);
+                            setRowSaving(true);
                             try {
                               const res = await fetch('/api/admin/owner/pricing', {
                                 method: 'PUT',
@@ -717,8 +720,8 @@ export default function AdminSettingsPage() {
                                 checkAdminAndLoad();
                               } else toast.error('Failed to save');
                             } catch { toast.error('Failed to save'); }
-                            finally { setModelPricingSaving(false); }
-                          }} disabled={modelPricingSaving}
+                            finally { setRowSaving(false); }
+                          }} disabled={rowSaving}
                             className="rounded-lg bg-white/5 p-1.5 text-white/40 hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors" title="Save">
                             <Save className="h-3.5 w-3.5" />
                           </button>

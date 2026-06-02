@@ -5,6 +5,8 @@ export const DEFAULT_PRICING: Record<string, { input: number; output: number }> 
   'openai/gpt-4o-mini': { input: 0.15, output: 0.60 },
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'openai/gpt-4o-audio-preview': { input: 2.50, output: 10.00 },
+  'openai/gpt-3.5-turbo': { input: 0.50, output: 1.50 },
+  'nvidia/nemotron-3-super-120b-a12b:free': { input: 0, output: 0 },
   'google/gemini-2.0-flash': { input: 0.10, output: 0.40 },
   'google/gemini-2.0-flash-lite': { input: 0.075, output: 0.30 },
   'google/gemini-2.5-pro': { input: 1.25, output: 5.00 },

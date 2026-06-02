@@ -27,18 +27,72 @@ export async function POST() {
       return NextResponse.json({ error: 'No active AI providers found. Add a provider first.' }, { status: 400 });
     }
 
+    // Collect all model names that need pricing (from DEFAULT_PRICING + configured models)
+    const modelEntries: Array<{ model: string; input: number; output: number }> = [];
+
+    for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
+      modelEntries.push({ model: modelName, input: prices.input, output: prices.output });
+    }
+
+    // Fetch configured models from providers and platform_settings
+    const { data: allProviders } = await supabase
+      .from('ai_providers')
+      .select('default_model')
+      .eq('is_active', true);
+
+    const { data: platformModels } = await supabase
+      .from('platform_settings')
+      .select('key, value')
+      .in('key', ['default_model', 'media_image_model', 'media_voice_model']);
+
+    const configuredModels = new Set<string>();
+    if (allProviders) {
+      for (const p of allProviders) {
+        if (p.default_model) configuredModels.add(p.default_model);
+      }
+    }
+    if (platformModels) {
+      for (const row of platformModels) {
+        if (row.value) configuredModels.add(String(row.value));
+      }
+    }
+
+    const existingDefaults = new Set(Object.keys(DEFAULT_PRICING));
+
     // Upsert pricing for ALL active providers
     let updated = 0;
 
     for (const provider of providers) {
-      for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
+      for (const entry of modelEntries) {
+        const { error } = await supabase
+          .from('model_pricing')
+          .upsert({
+            provider_id: provider.id,
+            model_name: entry.model,
+            input_price_per_1m_tokens: entry.input,
+            output_price_per_1m_tokens: entry.output,
+            is_auto_fetched: false,
+          }, { onConflict: 'provider_id,model_name' });
+
+        if (!error) updated++;
+      }
+
+      // Also upsert configured models (e.g. provider's default_model) that aren't in DEFAULT_PRICING
+      const configuredArr = Array.from(configuredModels);
+      for (let ci = 0; ci < configuredArr.length; ci++) {
+        const modelName = configuredArr[ci];
+        if (existingDefaults.has(modelName)) continue;
+        if (modelName.includes('/')) {
+          const baseName = modelName.split('/').pop()!;
+          if (existingDefaults.has(baseName)) continue;
+        }
         const { error } = await supabase
           .from('model_pricing')
           .upsert({
             provider_id: provider.id,
             model_name: modelName,
-            input_price_per_1m_tokens: prices.input,
-            output_price_per_1m_tokens: prices.output,
+            input_price_per_1m_tokens: 0,
+            output_price_per_1m_tokens: 0,
             is_auto_fetched: false,
           }, { onConflict: 'provider_id,model_name' });
 
@@ -46,7 +100,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ updated, total: Object.keys(DEFAULT_PRICING).length });
+    return NextResponse.json({ updated, total: modelEntries.length + providers.length * configuredModels.size });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

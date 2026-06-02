@@ -5,7 +5,7 @@ import { fetchOpenRouterPricing, DEFAULT_PRICING } from '@/lib/ai/pricing';
 
 export const dynamic = 'force-dynamic';
 
-function buildKnownModels(dbModels: string[], platformSettings: Record<string, string>): Set<string> {
+function buildKnownModels(dbModels: string[], platformSettings: Record<string, string>, providerDefaultModels: string[]): Set<string> {
   const known = new Set<string>();
 
   // All keys from DEFAULT_PRICING
@@ -21,8 +21,15 @@ function buildKnownModels(dbModels: string[], platformSettings: Record<string, s
   // Default media models from platform_settings
   const mediaImageModel = platformSettings['media_image_model'];
   const mediaVoiceModel = platformSettings['media_voice_model'];
+  const platformDefaultModel = platformSettings['default_model'];
   if (mediaImageModel) known.add(mediaImageModel);
   if (mediaVoiceModel) known.add(mediaVoiceModel);
+  if (platformDefaultModel) known.add(platformDefaultModel);
+
+  // Provider default models
+  for (const m of providerDefaultModels) {
+    if (m) known.add(m);
+  }
 
   return known;
 }
@@ -69,7 +76,7 @@ export async function POST(request: NextRequest) {
       const { data: settingsRows } = await supabase
         .from('platform_settings')
         .select('key, value')
-        .in('key', ['media_image_model', 'media_voice_model']);
+        .in('key', ['default_model', 'media_image_model', 'media_voice_model']);
 
       const platformSettings: Record<string, string> = {};
       if (settingsRows) {
@@ -78,8 +85,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Fetch provider default models
+      const { data: providers } = await supabase
+        .from('ai_providers')
+        .select('default_model')
+        .eq('is_active', true);
+
+      const providerDefaultModels = (providers || [])
+        .map((p: any) => p.default_model)
+        .filter(Boolean);
+
       const dbModelNames = (existingPricing || []).map((r: any) => r.model_name);
-      targetModels = buildKnownModels(dbModelNames, platformSettings);
+      targetModels = buildKnownModels(dbModelNames, platformSettings, providerDefaultModels);
     }
 
     // Get all OpenRouter providers
