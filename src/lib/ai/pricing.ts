@@ -64,8 +64,8 @@ export async function fetchOpenRouterPricing(): Promise<Record<string, { input: 
   for (const model of data.data || []) {
     if (model.pricing) {
       prices[model.id] = {
-        input: parseFloat(model.pricing.prompt) || 0,
-        output: parseFloat(model.pricing.completion) || 0,
+        input: (parseFloat(model.pricing.prompt) || 0) * 1_000_000,
+        output: (parseFloat(model.pricing.completion) || 0) * 1_000_000,
       };
     }
   }

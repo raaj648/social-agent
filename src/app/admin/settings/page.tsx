@@ -129,31 +129,29 @@ export default function AdminSettingsPage() {
       if (data.point_cost_image_read !== undefined) setPointCostImage(Number(data.point_cost_image_read));
       if (data.point_cost_voice_read !== undefined) setPointCostVoice(Number(data.point_cost_voice_read));
 
-      // Load gateways
-      const gwRes = await fetch('/api/admin/payment-gateways');
-      const gwData = await gwRes.json();
+      // Load remaining data in parallel
+      const [gwRes, peRes, cpRes, mpRes, provRes] = await Promise.all([
+        fetch('/api/admin/payment-gateways'),
+        fetch('/api/admin/profit-estimate'),
+        fetch('/api/admin/credit-packs'),
+        fetch('/api/admin/owner/pricing'),
+        fetch('/api/admin/owner/providers'),
+      ]);
+
+      const [gwData, peData, cpData] = await Promise.all([
+        gwRes.json(),
+        peRes.json(),
+        cpRes.json(),
+      ]);
       setGateways(gwData.gateways || []);
-
-      // Load profit estimates
-      const peRes = await fetch('/api/admin/profit-estimate');
-      const peData = await peRes.json();
       setProfitEstimates(peData.estimates || []);
-
-      // Load credit packs
-      const cpRes = await fetch('/api/admin/credit-packs');
-      const cpData = await cpRes.json();
       setCreditPacks(cpData.packs || []);
 
-      // Load purchases
-      loadPurchases();
-
-      // Load model pricing
-      const mpRes = await fetch('/api/admin/owner/pricing');
       if (mpRes.ok) { const mpData = await mpRes.json(); setModelPricing(mpData.pricing || []); }
-
-      // Load providers (for model pricing dropdown)
-      const provRes = await fetch('/api/admin/owner/providers');
       if (provRes.ok) { const provData = await provRes.json(); setAllProviders((provData.providers || []).map((p: any) => ({ id: p.id, name: p.name }))); }
+
+      // Load purchases (parallel fetch inside)
+      loadPurchases();
     } catch (e) { console.error('Failed to load settings', e); }
     setLoading(false);
   }

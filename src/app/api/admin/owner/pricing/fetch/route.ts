@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
     const remotePrices = await fetchOpenRouterPricing();
     let updated = 0;
     let matchedModels = 0;
+    const openRouterModelIds = new Set(Object.keys(remotePrices));
 
     // Upsert pricing for each OpenRouter provider, only for target models
     for (const provider of orProviders) {
@@ -128,6 +129,24 @@ export async function POST(request: NextRequest) {
             input_price_per_1m_tokens: prices.input,
             output_price_per_1m_tokens: prices.output,
             is_auto_fetched: true,
+          }, { onConflict: 'provider_id,model_name' });
+
+        if (!error) updated++;
+      }
+
+      // Also insert any DEFAULT_PRICING models that weren't found on OpenRouter
+      // (e.g. whisper models not listed by OpenRouter API)
+      for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
+        if (!matchesKnownModel(modelName, targetModels)) continue;
+        if (openRouterModelIds.has(modelName)) continue;
+        const { error } = await supabase
+          .from('model_pricing')
+          .upsert({
+            provider_id: provider.id,
+            model_name: modelName,
+            input_price_per_1m_tokens: prices.input,
+            output_price_per_1m_tokens: prices.output,
+            is_auto_fetched: false,
           }, { onConflict: 'provider_id,model_name' });
 
         if (!error) updated++;
