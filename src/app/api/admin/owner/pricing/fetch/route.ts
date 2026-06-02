@@ -38,7 +38,7 @@ function matchesKnownModel(openRouterModelId: string, knownModels: Set<string>):
   return false;
 }
 
-export async function POST(request?: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     const authSupabase = await createClient();
     const { data: { user } } = await authSupabase.auth.getUser();
