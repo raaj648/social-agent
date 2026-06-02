@@ -27,22 +27,23 @@ export async function POST() {
       return NextResponse.json({ error: 'No active AI providers found. Add a provider first.' }, { status: 400 });
     }
 
-    // Use the primary provider (or upsert for all providers)
-    const primaryProvider = providers[0];
+    // Upsert pricing for ALL active providers
     let updated = 0;
 
-    for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
-      const { error } = await supabase
-        .from('model_pricing')
-        .upsert({
-          provider_id: primaryProvider.id,
-          model_name: modelName,
-          input_price_per_1m_tokens: prices.input,
-          output_price_per_1m_tokens: prices.output,
-          is_auto_fetched: false,
-        }, { onConflict: 'provider_id,model_name' });
+    for (const provider of providers) {
+      for (const [modelName, prices] of Object.entries(DEFAULT_PRICING)) {
+        const { error } = await supabase
+          .from('model_pricing')
+          .upsert({
+            provider_id: provider.id,
+            model_name: modelName,
+            input_price_per_1m_tokens: prices.input,
+            output_price_per_1m_tokens: prices.output,
+            is_auto_fetched: false,
+          }, { onConflict: 'provider_id,model_name' });
 
-      if (!error) updated++;
+        if (!error) updated++;
+      }
     }
 
     return NextResponse.json({ updated, total: Object.keys(DEFAULT_PRICING).length });

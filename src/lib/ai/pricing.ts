@@ -3,6 +3,7 @@ import type { TokenUsage, CostBreakdown } from '@/lib/ai/types';
 export const DEFAULT_PRICING: Record<string, { input: number; output: number }> = {
   'openai/gpt-4o': { input: 2.50, output: 10.00 },
   'openai/gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'openai/gpt-4o-audio-preview': { input: 2.50, output: 10.00 },
   'google/gemini-2.0-flash': { input: 0.10, output: 0.40 },
   'google/gemini-2.0-flash-lite': { input: 0.075, output: 0.30 },
@@ -28,6 +29,14 @@ export function getModelPrice(
   const baseName = modelName.includes('/') ? modelName.split('/').pop()! : modelName;
   const baseHardcoded = DEFAULT_PRICING[baseName];
   if (baseHardcoded) return baseHardcoded;
+
+  // Reverse prefix match: modelName = "gpt-4o" → try "openai/gpt-4o"
+  if (!modelName.includes('/')) {
+    for (const prefix of ['openai/', 'google/', 'deepseek/', 'anthropic/']) {
+      const prefixed = DEFAULT_PRICING[prefix + modelName];
+      if (prefixed) return prefixed;
+    }
+  }
 
   return { input: 0, output: 0 };
 }
