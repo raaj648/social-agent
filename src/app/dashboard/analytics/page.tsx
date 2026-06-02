@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { MessageSquare, Activity, Cpu, TrendingUp, Clock, Zap, BarChart3, RefreshCw, Loader2 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
+import { MessageSquare, Activity, Cpu, TrendingUp, Clock, Zap, BarChart3, RefreshCw, Loader2, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { usePageTitle } from '@/lib/use-page-title';
 import { formatDate } from '@/lib/utils';
 
@@ -23,6 +23,7 @@ export default function AnalyticsPage() {
   const [platformBreakdown, setPlatformBreakdown] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pointsAnalytics, setPointsAnalytics] = useState<any>(null);
   const supabase = createClient();
 
   async function getUserAndLoad(daysOverride?: number) {
@@ -62,6 +63,9 @@ export default function AnalyticsPage() {
       setRecentLogs(logsRes.data || []);
       setAiLogs(aiDataRes.data || []);
       setPlatformBreakdown(platformsRes.data || []);
+
+      const anaRes = await fetch(`/api/user/analytics?days=${effectiveDays}`);
+      if (anaRes.ok) setPointsAnalytics(await anaRes.json());
     } catch (e: any) {
       setError(e.message || 'Failed to load analytics');
     } finally {
@@ -248,6 +252,141 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Credits Analytics */}
+      {pointsAnalytics && (
+        <>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="flex items-center gap-2 text-lg font-semibold mb-6">
+                <BarChart3 className="h-5 w-5 text-violet-600" />
+                Credits Usage ({days} days)
+              </h3>
+              {pointsAnalytics.dailyUsage?.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={pointsAnalytics.dailyUsage}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: string) => v.slice(5)} />
+                    <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid hsl(var(--border))', backgroundColor: 'hsl(var(--card))' }} />
+                    <Bar dataKey="points" name="Credits" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="py-16 text-center text-sm text-muted-foreground">No credit usage data yet</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="flex items-center gap-2 text-lg font-semibold mb-6">
+                <Activity className="h-5 w-5 text-emerald-600" />
+                Action Type Distribution
+              </h3>
+              {pointsAnalytics.actionBreakdown?.length > 0 ? (
+                <div className="flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie data={pointsAnalytics.actionBreakdown} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="points" nameKey="type" label={(entry: any) => `${(entry.type || '').replace(/_/g, ' ')}: ${entry.points}cr`}>
+                        {pointsAnalytics.actionBreakdown.map((_: any, idx: number) => (
+                          <Cell key={idx} fill={['#8b5cf6', '#06b6d4', '#10b981'][idx % 3]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid hsl(var(--border))', backgroundColor: 'hsl(var(--card))' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="py-16 text-center text-sm text-muted-foreground">No action data yet</p>
+              )}
+              {pointsAnalytics.pointCosts && (
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-muted/30 p-2">
+                    <span className="block text-muted-foreground">Text</span>
+                    <span className="font-medium text-violet-600">{pointsAnalytics.pointCosts.text_reply} cr</span>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-2">
+                    <span className="block text-muted-foreground">Image</span>
+                    <span className="font-medium text-cyan-600">{pointsAnalytics.pointCosts.image_read} cr</span>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-2">
+                    <span className="block text-muted-foreground">Voice</span>
+                    <span className="font-medium text-emerald-600">{pointsAnalytics.pointCosts.voice_read} cr</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Points stat cards + Platform breakdown by points */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="flex items-center gap-2 text-lg font-semibold mb-4">
+                <DollarSign className="h-5 w-5 text-amber-500" />
+                Credits Summary
+              </h3>
+              {pointsAnalytics.usage ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-xl bg-violet-50 dark:bg-violet-950/30 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Total Credits Used</p>
+                    <p className="text-2xl font-bold text-violet-600">{pointsAnalytics.usage.totalPoints.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Avg Credits/Day</p>
+                    <p className="text-2xl font-bold text-blue-600">{Math.round(pointsAnalytics.usage.totalPoints / Math.max(days, 1)).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Most Used Action</p>
+                    <p className="text-lg font-bold text-emerald-600 capitalize">
+                      {pointsAnalytics.actionBreakdown?.length > 0
+                        ? [...pointsAnalytics.actionBreakdown].sort((a: any, b: any) => b.count - a.count)[0].type.replace(/_/g, ' ')
+                        : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Total AI Tokens</p>
+                    <p className="text-2xl font-bold text-amber-600">{pointsAnalytics.usage.totalTokens.toLocaleString()}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">No usage data</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="flex items-center gap-2 text-lg font-semibold mb-4">
+                <Activity className="h-5 w-5 text-green-600" />
+                Platform Breakdown by Credits
+              </h3>
+              {pointsAnalytics.platform_breakdown?.length > 0 ? (
+                <div className="space-y-4">
+                  {pointsAnalytics.platform_breakdown.map((p: any) => {
+                    const totalPts = pointsAnalytics.platform_breakdown.reduce((s: number, x: any) => s + x.points, 0);
+                    const pct = totalPts > 0 ? Math.round((p.points / totalPts) * 100) : 0;
+                    return (
+                      <div key={p.platform}>
+                        <div className="flex items-center justify-between text-sm mb-1.5">
+                          <span className="font-medium capitalize">{p.platform}</span>
+                          <span className="text-muted-foreground">{p.points} cr ({p.calls} calls)</span>
+                        </div>
+                        <div className="h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          <div className={`h-full rounded-full bg-gradient-to-r ${
+                            p.platform === 'messenger' ? 'from-blue-500 to-blue-600' :
+                            p.platform === 'instagram' ? 'from-pink-500 to-rose-600' :
+                            p.platform === 'whatsapp' ? 'from-green-500 to-emerald-600' :
+                            'from-gray-500 to-gray-600'
+                          } transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">No platform data yet</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-purple-950 border border-blue-100 dark:border-blue-900 p-6">
         <h3 className="flex items-center gap-2 text-lg font-semibold mb-4">

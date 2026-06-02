@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeAdmin } from '@/lib/hooks/use-realtime-admin';
@@ -20,6 +21,12 @@ interface DashboardStats {
   aiRepliesToday: number;
   tokensToday: number;
   totalTokens: number;
+  costToday: number;
+  totalCost: number;
+  pointsToday: number;
+  totalPointsCharged: number;
+  activeSubscriptions: number;
+  monthlyRevenue: number;
   facebookPages: number;
   instagramAccounts: number;
   whatsappAccounts: number;
@@ -29,9 +36,10 @@ const kpiCards = [
   { key: 'totalUsers', label: 'Total Users', icon: Users, color: 'from-violet-500 to-purple-600' },
   { key: 'totalConversations', label: 'Conversations', icon: MessageCircle, color: 'from-emerald-500 to-teal-600' },
   { key: 'totalMessages', label: 'Total Messages', icon: MessageSquare, color: 'from-amber-500 to-orange-600' },
-  { key: 'facebookPages', label: 'Facebook Pages', icon: Activity, color: 'from-rose-500 to-pink-600' },
-  { key: 'instagramAccounts', label: 'Instagram Accounts', icon: Activity, color: 'from-fuchsia-500 to-purple-600' },
-  { key: 'whatsappAccounts', label: 'WhatsApp Accounts', icon: Activity, color: 'from-green-500 to-emerald-600' },
+  { key: 'totalCost', label: 'Total AI Cost', icon: DollarSign, color: 'from-rose-500 to-pink-600', prefix: '$' },
+  { key: 'monthlyRevenue', label: 'Monthly Revenue', icon: TrendingUp, color: 'from-green-500 to-emerald-600', prefix: '$' },
+  { key: 'activeSubscriptions', label: 'Active Subscriptions', icon: Activity, color: 'from-cyan-500 to-teal-600' },
+  { key: 'pointsToday', label: 'Credits Today', icon: BarChart3, color: 'from-orange-500 to-red-600' },
   { key: 'aiRepliesToday', label: 'AI Replies Today', icon: Bot, color: 'from-indigo-500 to-violet-600' },
 ];
 
@@ -65,6 +73,14 @@ export default function OwnerDashboard() {
   const router = useRouter();
   const supabase = createClient();
   const { loading, refreshing, data, error, refreshNow } = useRealtimeAdmin();
+  const [usageData, setUsageData] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/owner/usage?days=30')
+      .then(r => r.json())
+      .then(setUsageData)
+      .catch(() => {});
+  }, []);
 
   if (loading) {
     return (
@@ -113,6 +129,18 @@ export default function OwnerDashboard() {
             color={card.color}
           />
         ))}
+      </div>
+
+      <div className="flex flex-wrap gap-4 text-sm">
+        <span className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white/60">
+          <span className="font-medium text-rose-400">{data.stats.facebookPages.toLocaleString()}</span> Facebook Pages
+        </span>
+        <span className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white/60">
+          <span className="font-medium text-fuchsia-400">{data.stats.instagramAccounts.toLocaleString()}</span> Instagram Accounts
+        </span>
+        <span className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white/60">
+          <span className="font-medium text-emerald-400">{data.stats.whatsappAccounts.toLocaleString()}</span> WhatsApp Accounts
+        </span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -223,24 +251,104 @@ export default function OwnerDashboard() {
       </div>
 
       <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
-        <h3 className="mb-4 text-sm font-semibold text-white">Token Usage Today</h3>
-        <div className="flex items-center gap-8">
+        <h3 className="mb-4 text-sm font-semibold text-white">Usage & Cost Summary</h3>
+        <div className="flex flex-wrap items-center gap-6">
           <div>
             <p className="text-3xl font-bold text-white">{data.stats.tokensToday.toLocaleString()}</p>
-            <p className="text-sm text-white/40">tokens consumed today</p>
+            <p className="text-sm text-white/40">tokens today</p>
           </div>
           <div className="h-12 w-px bg-white/10" />
           <div>
             <p className="text-3xl font-bold text-white">{data.stats.totalTokens.toLocaleString()}</p>
-            <p className="text-sm text-white/40">total tokens all time</p>
+            <p className="text-sm text-white/40">tokens all time</p>
           </div>
           <div className="h-12 w-px bg-white/10" />
           <div>
-            <p className="text-3xl font-bold text-emerald-400">{data.stats.aiRepliesToday.toLocaleString()}</p>
-            <p className="text-sm text-white/40">AI replies today</p>
+            <p className="text-3xl font-bold text-emerald-400">${data.stats.costToday.toFixed(2)}</p>
+            <p className="text-sm text-white/40">cost today</p>
+          </div>
+          <div className="h-12 w-px bg-white/10" />
+          <div>
+            <p className="text-3xl font-bold text-amber-400">${data.stats.totalCost.toFixed(2)}</p>
+            <p className="text-sm text-white/40">total cost all time</p>
+          </div>
+          <div className="h-12 w-px bg-white/10" />
+          <div>
+            <p className="text-3xl font-bold text-violet-400">{data.stats.pointsToday.toLocaleString()}</p>
+            <p className="text-sm text-white/40">credits consumed today</p>
+          </div>
+          <div className="h-12 w-px bg-white/10" />
+          <div>
+            <p className="text-3xl font-bold text-fuchsia-400">{data.stats.totalPointsCharged.toLocaleString()}</p>
+            <p className="text-sm text-white/40">total credits all time</p>
           </div>
         </div>
       </div>
+
+      {usageData && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Cost by Action Type pie chart */}
+          <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+            <h3 className="mb-4 text-sm font-semibold text-white">Cost by Action Type (30d)</h3>
+            {usageData.actionTypeBreakdown && usageData.actionTypeBreakdown.length > 0 ? (
+              <div className="flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={usageData.actionTypeBreakdown} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="totalCost" nameKey="type" label={({ type, totalCost }: any) => `${type.replace(/_/g, ' ')}: $${totalCost.toFixed(2)}`}>
+                      {usageData.actionTypeBreakdown.map((_: any, idx: number) => (
+                        <Cell key={idx} fill={['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'][idx % 4]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: 'rgba(15,15,40,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="py-12 text-center text-sm text-white/30">No action type data</p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-3 justify-center">
+              {(usageData.actionTypeBreakdown || []).map((a: any, idx: number) => (
+                <div key={a.type} className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'][idx % 4] }} />
+                  <span className="text-xs text-white/60 capitalize">{a.type.replace(/_/g, ' ')}: ${a.totalCost.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Most Expensive Models mini table */}
+          <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+            <h3 className="mb-4 text-sm font-semibold text-white">Most Expensive Models (30d)</h3>
+            {usageData.models && usageData.models.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-white/40 uppercase tracking-wider">
+                    <th className="pb-2 pr-2 font-medium">Model</th>
+                    <th className="pb-2 pr-2 font-medium">Cost</th>
+                    <th className="pb-2 pr-2 font-medium">Tokens</th>
+                    <th className="pb-2 font-medium">Calls</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...usageData.models]
+                    .sort((a: any, b: any) => b.totalCost - a.totalCost)
+                    .slice(0, 5)
+                    .map((m: any) => (
+                      <tr key={m.model} className="text-white/70">
+                        <td className="py-1.5 pr-2 font-medium text-white truncate max-w-[160px]">{m.model}</td>
+                        <td className="py-1.5 pr-2 text-amber-400">${m.totalCost.toFixed(2)}</td>
+                        <td className="py-1.5 pr-2">{m.totalTokens.toLocaleString()}</td>
+                        <td className="py-1.5">{m.totalCalls}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="py-8 text-center text-sm text-white/30">No model data yet</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

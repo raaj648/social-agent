@@ -6,7 +6,16 @@ import { createCompletion, createFallbackResponse, type ProviderConfig } from '@
 import { buildSystemPrompt, buildConversationContext } from '@/lib/ai/prompts';
 import { isWithinBusinessHours } from '@/lib/utils';
 import { decrypt } from '@/lib/crypto';
+import { resolveMediaProviders } from '@/lib/ai/router';
+import { transcribeVoice } from '@/lib/media/transcribe';
+import { resizeImage } from '@/lib/media/resize';
+import { detectProviderType, type ProviderType } from '@/lib/ai/provider';
+import { executeWithFallback, AllRetriesFailedError } from '@/lib/ai/retry';
+import { getModelPrice, calculateCost } from '@/lib/ai/pricing';
+import type { RetryableProvider, TokenUsage, ActionType } from '@/lib/ai/types';
 import type { AISettings } from '@/types';
+import type { MediaBundle } from '@/lib/media/types';
+import type { ContentPart } from '@/lib/ai/openrouter';
 
 export async function handleAIResponse(
   targetUserId: string,
@@ -20,7 +29,7 @@ export async function handleAIResponse(
   accessToken: string,
   platform: 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord',
   aiSettings: AISettings,
-  hasMedia?: boolean,
+  mediaBundle?: MediaBundle,
   interactionAppId?: string,
   interactionToken?: string,
   webhookName?: string
@@ -100,20 +109,65 @@ export async function handleAIResponse(
       }
     }
 
-    // Atomic credit deduction
-    const { data: deducted, error: deductError } = await supabase.rpc('deduct_credit', { p_user_id: targetUserId });
-    if (deductError) {
-      console.error('Credit deduction error:', deductError);
-    }
-    if (deducted === false) {
-      console.warn(`[webhook] Credit deduction failed for user ${targetUserId} — no credits remaining`);
+    // Quick credit check (actual deduct_points happens later with calculated cost)
+    const { data: userCredits } = await supabase
+      .from('users')
+      .select('credits_remaining')
+      .eq('id', targetUserId)
+      .single();
+    if (!userCredits || userCredits.credits_remaining <= 0) {
+      console.warn(`[handler] User ${targetUserId} has no credits remaining`);
       if (settings.fallback_response) {
         await sendPlatformMessage(senderId, settings.fallback_response, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
       }
       return;
     }
 
-    // Fetch active AI provider and master prompt / reasoning settings
+    // Fetch ALL active AI providers + settings
+    const [{ data: allProviders }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }, { data: mediaImageModelCfg }, { data: mediaImageProviderTypeCfg }, { data: mediaImageProviderIdCfg }, { data: mediaImageEnabledCfg }, { data: mediaImageMaxSizeCfg }, { data: mediaImageMaxCountCfg }, { data: mediaVoiceEnabledCfg }, { data: mediaVoiceProviderIdCfg }, { data: mediaVoiceModelCfg }, { data: pointCostTextCfg }, { data: pointCostImageCfg }, { data: pointCostVoiceCfg }] = await Promise.all([
+      supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order'),
+      supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_model').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_type').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_provider_id').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_max_size').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_image_max_count').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_enabled').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_provider_id').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'media_voice_model').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'point_cost_text_reply').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'point_cost_image_read').maybeSingle(),
+      supabase.from('platform_settings').select('value').eq('key', 'point_cost_voice_read').maybeSingle(),
+    ]);
+    const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
+    const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
+    const defaultMaxTokens = tokensCfg?.value ? Number(tokensCfg.value) : 500;
+
+    const mediaImageMaxCount = Number(mediaImageMaxCountCfg?.value) || 3;
+    const mediaSettings: Record<string, unknown> = {
+      media_image_model: mediaImageModelCfg?.value || 'openai/gpt-4o-mini',
+      media_image_provider_type: mediaImageProviderTypeCfg?.value || 'openrouter',
+      media_image_provider_id: mediaImageProviderIdCfg?.value || '',
+      media_image_enabled: mediaImageEnabledCfg?.value ?? true,
+      media_image_max_size: mediaImageMaxSizeCfg?.value || 2048,
+      media_image_max_count: mediaImageMaxCount,
+      media_voice_enabled: mediaVoiceEnabledCfg?.value ?? true,
+      media_voice_provider_id: mediaVoiceProviderIdCfg?.value || '',
+      media_voice_model: mediaVoiceModelCfg?.value || 'openai/whisper-large-v3-turbo',
+    };
+
+    const pointCosts = {
+      text_reply: Number(pointCostTextCfg?.value) || 1,
+      image_read: Number(pointCostImageCfg?.value) || 3,
+      voice_read: Number(pointCostVoiceCfg?.value) || 2,
+    };
+
+    // Build provider groups by role
     let providerConfig: ProviderConfig | undefined;
     let activeModel = settings.model || 'openai/gpt-4o-mini';
     let masterPrompt: string | null = null;
@@ -122,31 +176,46 @@ export async function handleAIResponse(
     let reasoningStrategy: string | undefined;
     let reasoningMediaMaxTokens: number | undefined;
 
-    const [{ data: activeProvider }, { data: platformCfg }, { data: reasoningCfg }, { data: memoryCountCfg }, { data: tempCfg }, { data: tokensCfg }] = await Promise.all([
-      supabase.from('ai_providers').select('*').eq('is_active', true).order('sort_order').limit(1).maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'master_prompt').maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'reasoning_enabled').maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'default_conversation_memory_count').maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'default_temperature').maybeSingle(),
-      supabase.from('platform_settings').select('value').eq('key', 'default_max_tokens').maybeSingle(),
-    ]);
-    const defaultMemoryCount = memoryCountCfg?.value ? Number(memoryCountCfg.value) : 10;
-    const defaultTemperature = tempCfg?.value ? Number(tempCfg.value) : 0.7;
-    const defaultMaxTokens = tokensCfg?.value ? Number(tokensCfg.value) : 500;
+    const textProviders: RetryableProvider[] = [];
+    const visionProviders: RetryableProvider[] = [];
+    const voiceProviders: RetryableProvider[] = [];
+    const dbPricingMap = new Map<string, { input: number; output: number }>();
 
-    if (activeProvider) {
-      try {
-        providerConfig = {
-          baseUrl: activeProvider.base_url,
-          apiKey: decrypt(activeProvider.api_key),
-          providerType: activeProvider.provider_type,
-        };
-        activeModel = activeProvider.default_model || activeModel;
-        reasoningMaxTokens = activeProvider.reasoning_max_tokens ?? undefined;
-        reasoningStrategy = activeProvider.reasoning_strategy || undefined;
-        reasoningMediaMaxTokens = activeProvider.reasoning_media_max_tokens ?? undefined;
-      } catch {
-        console.warn('Failed to decrypt provider API key, falling back to default');
+    if (allProviders && allProviders.length > 0) {
+      for (const p of allProviders) {
+        try {
+          const decryptedKey = decrypt(p.api_key);
+          const roles: Array<'text' | 'vision' | 'voice'> = p.roles || ['text'];
+          const retryable: RetryableProvider = {
+            id: p.id,
+            config: { baseUrl: p.base_url, apiKey: decryptedKey, providerType: p.provider_type as ProviderType },
+            model: p.default_model || 'openai/gpt-4o-mini',
+            roles,
+          };
+          if (roles.includes('text')) textProviders.push(retryable);
+          if (roles.includes('vision')) visionProviders.push(retryable);
+          if (roles.includes('voice')) voiceProviders.push(retryable);
+          if (!providerConfig) {
+            providerConfig = retryable.config as ProviderConfig;
+            activeModel = p.default_model || activeModel;
+            reasoningMaxTokens = p.reasoning_max_tokens ?? undefined;
+            reasoningStrategy = p.reasoning_strategy || undefined;
+            reasoningMediaMaxTokens = p.reasoning_media_max_tokens ?? undefined;
+          }
+        } catch {
+          console.warn(`Failed to decrypt provider ${p.id} API key, skipping`);
+        }
+      }
+
+      // Load pricing map from DB
+      const { data: pricingRows } = await supabase.from('model_pricing').select('*');
+      if (pricingRows) {
+        for (const pr of pricingRows) {
+          dbPricingMap.set(`${pr.provider_id}:${pr.model_name}`, {
+            input: Number(pr.input_price_per_1m_tokens) || 0,
+            output: Number(pr.output_price_per_1m_tokens) || 0,
+          });
+        }
       }
     }
     masterPrompt = platformCfg?.value as string || null;
@@ -245,11 +314,54 @@ export async function handleAIResponse(
       settings.conversation_memory_count ?? defaultMemoryCount
     );
 
-    // Prepare completion messages
+    // Prepare completion messages (with optional image content)
+    const hasMedia = !!(mediaBundle && (mediaBundle.images.length > 0 || mediaBundle.voice));
+    let userContent: string | ContentPart[] = incomingMessage;
+
+    if (mediaBundle?.images && mediaBundle.images.length > 0 && visionProviders.length > 0) {
+      const parts: ContentPart[] = [
+        { type: 'text' as const, text: incomingMessage },
+      ];
+      const maxSize = Number(mediaSettings.media_image_max_size) || 2048;
+      for (const img of mediaBundle.images.slice(0, mediaImageMaxCount)) {
+        try {
+          const resized = await resizeImage(img.data, img.mimeType, maxSize);
+          const base64 = resized.data.toString('base64');
+          parts.push({ type: 'image_url' as const, image_url: { url: `data:${resized.mimeType};base64,${base64}` } });
+        } catch {
+          const base64 = img.data.toString('base64');
+          parts.push({ type: 'image_url' as const, image_url: { url: `data:${img.mimeType};base64,${base64}` } });
+        }
+      }
+      userContent = parts;
+    }
+
+    // Transcribe voice if present (use voice provider if available, else text provider)
+    const primaryVoiceProvider = voiceProviders[0] || textProviders[0];
+    if (mediaBundle?.voice && !mediaBundle.transcript && primaryVoiceProvider) {
+      try {
+        const transcript = await transcribeVoice(mediaBundle.voice, {
+          apiKey: primaryVoiceProvider.config.apiKey,
+          model: String(mediaSettings.media_voice_model || 'openai/whisper-large-v3-turbo'),
+          baseUrl: primaryVoiceProvider.config.baseUrl || undefined,
+          providerType: primaryVoiceProvider.config.providerType,
+        });
+        if (transcript) {
+          mediaBundle.transcript = transcript;
+          const transcriptText = `[Transcribed voice: "${transcript}"]`;
+          userContent = typeof userContent === 'string'
+            ? `${userContent}\n\n${transcriptText}`
+            : [...userContent, { type: 'text' as const, text: transcriptText }];
+        }
+      } catch (err) {
+        console.error('Voice transcription failed:', err);
+      }
+    }
+
     const completionMessages = [
       { role: 'system' as const, content: systemPrompt },
       ...conversationHistory,
-      { role: 'user' as const, content: incomingMessage },
+      { role: 'user' as const, content: userContent },
     ];
 
     // Prepare tools
@@ -311,30 +423,76 @@ export async function handleAIResponse(
 
     const tools = baseTools.length > 0 ? baseTools : undefined;
 
-    const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try { return await fn(); }
-        catch (error) {
-          if (attempt === maxRetries) throw error;
-          console.warn(`[handler] AI attempt ${attempt} for conversation ${conversationId} failed, retrying in ${Math.pow(2, attempt - 1)}s:`, error);
-          await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
-        }
-      }
-      throw new Error('Unreachable');
-    };
-
     // Override reasoning when media is present (auto-enable for image/voice messages)
     const effectiveSuppressReasoning = (hasMedia && reasoningMediaMaxTokens) ? false : !reasoningEnabled;
     const effectiveReasoningMaxTokens = (hasMedia && reasoningMediaMaxTokens) ? reasoningMediaMaxTokens : reasoningMaxTokens;
 
-    // Create completion
-    const response = await withRetry(() => createCompletion({
-      model: activeModel,
-      messages: completionMessages,
-      temperature: settings.temperature ?? defaultTemperature,
-      max_tokens: settings.max_tokens ?? defaultMaxTokens,
-      tools,
-    }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
+    // Resolve vision/voice providers via router
+    const mediaRouterResult = resolveMediaProviders({
+      hasImage: !!(mediaBundle?.images?.length),
+      hasVoice: !!(mediaBundle?.voice),
+      mediaSettings,
+      providers: [...textProviders, ...visionProviders, ...voiceProviders],
+    });
+
+    let resolvedModel = activeModel;
+    let textProviderGroup = textProviders;
+    if (mediaBundle?.images && mediaBundle.images.length > 0 && mediaRouterResult.visionProvider) {
+      resolvedModel = mediaRouterResult.visionModel;
+      textProviderGroup = [mediaRouterResult.visionProvider, ...textProviders];
+    }
+
+    // Calculate point cost and deduct before AI call
+    const actionType: ActionType = mediaBundle?.images?.length ? 'image_read' : mediaBundle?.voice ? 'voice_read' : 'text_reply';
+    const pointCost = actionType === 'text_reply' ? pointCosts.text_reply : actionType === 'image_read' ? pointCosts.image_read : pointCosts.voice_read;
+    const { data: deducted, error: deductError } = await supabase.rpc('deduct_points', {
+      p_user_id: targetUserId,
+      p_amount: pointCost,
+    });
+    if (deductError) {
+      console.error('Points deduction error:', deductError);
+    } else if (deducted === false) {
+      console.warn(`[handler] User ${targetUserId} has insufficient points (needed ${pointCost})`);
+      if (settings.fallback_response) {
+        await sendPlatformMessage(senderId, settings.fallback_response, accessToken, platform, instagramDbId, whatsappDbId, settings, pageDbId, interactionAppId, interactionToken, undefined, webhookName);
+      }
+      return;
+    }
+
+    // Fire-and-forget: update subscription points_used
+    if (deducted === true) {
+      supabase.rpc('update_subscription_points_used', {
+        p_user_id: targetUserId,
+        p_amount: pointCost,
+      }).then(() => {}, () => {});
+    }
+
+    // Create completion with retry + fallback
+    const primaryProviders = mediaBundle?.images?.length ? (mediaRouterResult.visionProvider ? [mediaRouterResult.visionProvider, ...textProviders] : textProviders) : textProviders;
+    let response: Awaited<ReturnType<typeof createCompletion>>;
+    let textProviderUsed: RetryableProvider;
+
+    try {
+      const result = await executeWithFallback(primaryProviders, (provider) =>
+        createCompletion({
+          model: provider.model,
+          messages: completionMessages,
+          temperature: settings.temperature ?? defaultTemperature,
+          max_tokens: settings.max_tokens ?? defaultMaxTokens,
+          tools,
+        }, provider.config as ProviderConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy),
+        { maxAttempts: 3 }
+      );
+      response = result.result;
+      textProviderUsed = result.providerUsed;
+    } catch (err) {
+      const retryErr = err instanceof AllRetriesFailedError ? err : new AllRetriesFailedError(
+        [err instanceof Error ? err : new Error(String(err))],
+        ['unknown']
+      );
+      console.error(`[handler] All AI retry attempts failed for conversation ${conversationId}:`, retryErr.errors);
+      return;
+    }
 
     const choice = response.choices?.[0];
     const toolCall = choice?.message?.tool_calls?.[0];
@@ -413,12 +571,23 @@ export async function handleAIResponse(
         { role: 'tool' as const, tool_call_id: toolCall.id, content: toolResult },
       ];
 
-      const followUp = await withRetry(() => createCompletion({
-        model: activeModel,
-        messages: followUpMessages,
-        temperature: settings.temperature ?? defaultTemperature,
-        max_tokens: settings.max_tokens ?? defaultMaxTokens,
-      }, providerConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy));
+      let followUp: Awaited<ReturnType<typeof createCompletion>>;
+      try {
+        const result = await executeWithFallback(
+          textProviders.length > 0 ? textProviders : primaryProviders,
+          (provider) => createCompletion({
+            model: provider.model,
+            messages: followUpMessages,
+            temperature: settings.temperature ?? defaultTemperature,
+            max_tokens: settings.max_tokens ?? defaultMaxTokens,
+          }, provider.config as ProviderConfig, effectiveSuppressReasoning, effectiveReasoningMaxTokens, reasoningStrategy),
+          { maxAttempts: 3 }
+        );
+        followUp = result.result;
+      } catch {
+        console.error(`[handler] Follow-up AI call failed for conversation ${conversationId}`);
+        return;
+      }
 
       const followUpContent = followUp.choices?.[0]?.message?.content;
       if (followUpContent) {
@@ -450,21 +619,44 @@ export async function handleAIResponse(
       }
     }
 
-    // Update conversation timestamp and log usage
-    const tokensUsed = response.usage?.total_tokens || 0;
+    // Update conversation timestamp
     await supabase
       .from('conversations')
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', conversationId);
 
+    // Calculate cost and log usage
+    const tokenUsage: TokenUsage = {
+      input_tokens: response.usage?.prompt_tokens || 0,
+      output_tokens: response.usage?.completion_tokens || (response.usage?.total_tokens || 0) - (response.usage?.prompt_tokens || 0),
+      reasoning_tokens: (response.usage as any)?.completion_tokens_details?.reasoning_tokens || 0,
+    };
+    const pricing = getModelPrice(resolvedModel, textProviderUsed?.id || '', dbPricingMap);
+    const cost = calculateCost(tokenUsage, pricing);
+
     await supabase.from('usage_logs').insert({
       user_id: targetUserId,
       page_id: pageDbId,
       action: 'ai_reply',
+      action_type: actionType,
       platform,
-      tokens_used: tokensUsed,
-      model_used: activeModel,
-      metadata: { conversation_id: conversationId, message_length: incomingMessage.length },
+      tokens_used: tokenUsage.input_tokens + tokenUsage.output_tokens,
+      model_used: resolvedModel,
+      provider_id: textProviderUsed?.id || null,
+      model_name: resolvedModel,
+      input_tokens: tokenUsage.input_tokens,
+      output_tokens: tokenUsage.output_tokens,
+      reasoning_tokens: tokenUsage.reasoning_tokens,
+      input_cost: cost.input_cost,
+      output_cost: cost.output_cost,
+      total_cost: cost.total_cost,
+      points_charged: pointCost,
+      metadata: {
+        conversation_id: conversationId,
+        message_length: incomingMessage.length,
+        has_image: !!(mediaBundle?.images?.length),
+        has_voice: !!(mediaBundle?.voice),
+      },
     });
   } catch (error) {
     console.error('AI handler error:', error);

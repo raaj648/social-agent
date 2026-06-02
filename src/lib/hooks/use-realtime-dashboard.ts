@@ -33,7 +33,7 @@ export function useRealtimeDashboard(): DashboardData {
 
   const fetchInitialData = useCallback(async (userId: string) => {
     const [profileRes, pageRes, igRes, waRes, convCountRes, recentRes] = await Promise.all([
-      supabase.from('users').select('id, full_name, email, plan, credits_remaining, credits_total, credits_expires_at, business_name, user_number').eq('id', userId).single(),
+      supabase.from('users').select('id, full_name, email, plan, credits_remaining, credits_total, business_name, user_number').eq('id', userId).single(),
       supabase.from('connected_pages').select('*', { count: 'exact', head: true }).eq('user_id', userId),
       supabase.from('instagram_accounts').select('*', { count: 'exact', head: true }).eq('user_id', userId),
       supabase.from('whatsapp_accounts').select('*', { count: 'exact', head: true }).eq('user_id', userId),

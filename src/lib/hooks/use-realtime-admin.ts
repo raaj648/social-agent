@@ -12,6 +12,12 @@ export interface AdminData {
     aiRepliesToday: number;
     tokensToday: number;
     totalTokens: number;
+    costToday: number;
+    totalCost: number;
+    pointsToday: number;
+    totalPointsCharged: number;
+    activeSubscriptions: number;
+    monthlyRevenue: number;
     facebookPages: number;
     instagramAccounts: number;
     whatsappAccounts: number;

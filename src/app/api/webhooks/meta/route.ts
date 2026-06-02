@@ -43,7 +43,11 @@ export async function POST(request: NextRequest) {
       for (const entry of body.entry) {
         if (entry.messaging) {
           for (const event of entry.messaging) {
-            if (!event.message?.text || !event.sender?.id || event.message?.is_echo) continue;
+            const msgText = event.message?.text || '';
+            const msgAttachments = event.message?.attachments;
+            const hasAttachments = msgAttachments && msgAttachments.length > 0;
+
+            if ((!msgText && !hasAttachments) || !event.sender?.id || event.message?.is_echo) continue;
 
             const msgId = event.message?.mid;
             if (msgId) {
@@ -57,11 +61,12 @@ export async function POST(request: NextRequest) {
             await processWebhookMessage({
               platform,
               senderId: event.sender.id,
-              messageText: event.message.text,
+              messageText: msgText || '[attachment]',
               platformMsgId: msgId,
               recipientId: event.recipient?.id || entry.id,
               timestamp: event.timestamp || Date.now(),
-              hasMedia: event.message?.attachments?.length > 0,
+              hasMedia: msgAttachments?.length > 0,
+              messengerAttachments: msgAttachments,
             });
           }
         }
@@ -92,6 +97,10 @@ export async function POST(request: NextRequest) {
               if (!textBody && !msg.from) continue;
               const isMedia = !!(msg.image || msg.video || msg.audio || msg.voice || msg.document);
 
+              const waMediaFields = msg.image || msg.video || msg.audio || msg.voice || msg.document
+                ? { image: msg.image, video: msg.video, audio: msg.audio, voice: msg.voice, document: msg.document }
+                : undefined;
+
               await processWebhookMessage({
                 platform: 'whatsapp',
                 senderId: msg.from,
@@ -101,6 +110,7 @@ export async function POST(request: NextRequest) {
                 timestamp: msg.timestamp ? Number(msg.timestamp) * 1000 : Date.now(),
                 senderName,
                 hasMedia: isMedia,
+                whatsappMedia: waMediaFields,
               });
             }
           }

@@ -208,6 +208,7 @@ export interface Order {
 
 export interface OpenRouterResponse {
   id: string;
+  model?: string;
   choices: Array<{
     index: number;
     message: {
@@ -250,6 +251,7 @@ export interface BillingPlan {
   max_pages: number;
   allowed_models: string[];
   features: string[];
+  allowed_actions: string[];
   is_popular: boolean;
   sort_order: number;
   is_active: boolean;
@@ -294,3 +296,34 @@ export interface Business {
 }
 
 export type Platform = 'messenger' | 'instagram' | 'whatsapp' | 'telegram' | 'discord';
+export interface CreditPack {
+  id: string;
+  name: string;
+  slug: string;
+  credits_amount: number;
+  price_cents: number;
+  is_active: boolean;
+  is_auto_renew: boolean;
+  sort_order: number;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditPurchase {
+  id: string;
+  user_id: string;
+  pack_id: string | null;
+  credits_allocated: number;
+  amount_paid_cents: number;
+  status: 'pending' | 'approved' | 'rejected' | 'refunded';
+  payment_method: string | null;
+  reference_id: string | null;
+  admin_note: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type { ProviderRole } from '@/lib/ai/types';

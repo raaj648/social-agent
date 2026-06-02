@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       accessToken,
       platform as 'messenger' | 'instagram' | 'whatsapp',
       aiSettings,
-      false
+      undefined
     );
 
     return NextResponse.json({ success: true }, { status: 200 });

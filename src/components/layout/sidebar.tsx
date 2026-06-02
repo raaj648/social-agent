@@ -22,6 +22,7 @@ import {
   User,
   Menu,
   X,
+  CreditCard,
 } from 'lucide-react';
 
 const navItems = [
@@ -32,6 +33,7 @@ const navItems = [
   { href: '/dashboard/playground', label: 'Playground', icon: Bot },
   { href: '/dashboard/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
   { href: '/dashboard/profile', label: 'Profile', icon: User },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];

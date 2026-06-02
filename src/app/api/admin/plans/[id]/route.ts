@@ -25,6 +25,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (body.is_popular !== undefined) updates.is_popular = body.is_popular;
     if (body.sort_order !== undefined) updates.sort_order = body.sort_order;
     if (body.is_active !== undefined) updates.is_active = body.is_active;
+    if (body.allowed_actions !== undefined) updates.allowed_actions = body.allowed_actions;
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase

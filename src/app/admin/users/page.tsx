@@ -24,7 +24,6 @@ interface EditModalData {
   plan: string;
   credits_remaining: number;
   credits_total: number;
-  credits_expires_at: string | null;
 }
 
 export default function OwnerUsersPage() {
@@ -407,7 +406,7 @@ export default function OwnerUsersPage() {
                     <td className="px-4 py-4 text-sm text-white/40">{formatDate(user.created_at)}</td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button onClick={() => setEditModal({ user, role: user.role, plan: user.plan, credits_remaining: user.credits_remaining, credits_total: user.credits_total, credits_expires_at: user.credits_expires_at })}
+                        <button onClick={() => setEditModal({ user, role: user.role, plan: user.plan, credits_remaining: user.credits_remaining, credits_total: user.credits_total })}
                           className="rounded-lg px-2.5 py-1.5 text-xs font-medium border border-white/10 text-white/60 hover:bg-white/5 transition-colors">Edit</button>
                         <button onClick={() => toggleAdmin(user.id, user.role)}
                           className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${

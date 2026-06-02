@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
 import { editDiscordInteractionResponse, setBotNickname } from '@/lib/discord/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
+import { processDiscordMedia } from '@/lib/media/processors/discord';
 import type { AISettings } from '@/types';
 
 interface DiscordInteraction {
@@ -260,9 +261,11 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       }
     }
 
+    // Process media attachments (images, voice)
+    const discordMediaBundle = await processDiscordMedia(interaction.data?.resolved?.attachments);
+
     // Await AI handler — keeps the promise alive so waitUntil() in the route
     // prevents Vercel from terminating the function before the reply is sent.
-    const discordHasMedia = !!(interaction.data?.resolved?.attachments && Object.keys(interaction.data.resolved.attachments).length > 0);
     await handleAIResponse(
       matchedBot.user_id,
       matchedBot.user_id,
@@ -275,7 +278,7 @@ export async function processDiscordInteraction(interaction: DiscordInteraction)
       botToken,
       'discord',
       aiSettings as AISettings,
-      discordHasMedia,
+      discordMediaBundle ?? undefined,
       interaction.application_id,
       interaction.token,
       matchedBot.display_name || matchedBot.bot_username || undefined

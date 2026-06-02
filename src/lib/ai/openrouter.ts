@@ -1,6 +1,10 @@
 import { OpenRouterResponse } from '@/types';
 import { type ProviderType, detectProviderType } from '@/lib/ai/provider';
 
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 interface ToolDef {
   type: 'function';
   function: {
@@ -12,7 +16,7 @@ interface ToolDef {
 
 interface ChatMessage {
   role: string;
-  content: string | null;
+  content: string | ContentPart[] | null;
   tool_calls?: Array<{
     id: string;
     type?: string;
@@ -95,23 +99,29 @@ export async function createCompletion(
     body.tool_choice = 'auto';
   }
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
-      'X-Title': process.env.OPENROUTER_SITE_NAME || 'SocialReply AI',
-    },
-    body: JSON.stringify(body),
-  });
+  let data: OpenRouterResponse;
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`AI API error (${res.status}): ${errorText}`);
+  if (providerType === 'google') {
+    data = await handleGeminiRequest(params, baseUrl, apiKey, body);
+  } else {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
+        'X-Title': process.env.OPENROUTER_SITE_NAME || 'SocialReply AI',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`AI API error (${res.status}): ${errorText}`);
+    }
+
+    data = await res.json();
   }
-
-  const data: OpenRouterResponse = await res.json();
 
   // Strip reasoning patterns from content as a safety net
   if (data.choices) {
@@ -135,4 +145,85 @@ export async function createCompletion(
 
 export async function createFallbackResponse(): Promise<string> {
   return "Thanks for your message! We'll get back to you shortly.";
+}
+
+function convertToGeminiFormat(messages: ChatMessage[]): unknown[] {
+  const contents: unknown[] = [];
+  for (const msg of messages) {
+    const role = msg.role === 'assistant' ? 'model' : msg.role === 'system' ? 'user' : msg.role;
+    const parts: unknown[] = [];
+
+    if (typeof msg.content === 'string') {
+      parts.push({ text: msg.content });
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part.type === 'text') {
+          parts.push({ text: part.text });
+        } else if (part.type === 'image_url') {
+          const match = part.image_url.url.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+          } else {
+            parts.push({ text: `[Image: ${part.image_url.url}]` });
+          }
+        }
+      }
+    }
+
+    if (parts.length > 0) {
+      contents.push({ role, parts });
+    }
+  }
+  return contents;
+}
+
+async function handleGeminiRequest(
+  params: CompletionParams,
+  baseUrl: string,
+  apiKey: string,
+  _originalBody: Record<string, unknown>
+): Promise<OpenRouterResponse> {
+  const modelName = params.model.replace(/^google\//, '');
+  const contents = convertToGeminiFormat(params.messages);
+
+  const geminiBody = {
+    contents,
+    generationConfig: {
+      temperature: params.temperature ?? 0.7,
+      maxOutputTokens: params.max_tokens ?? 500,
+    },
+  };
+
+  const url = `${baseUrl}/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(geminiBody),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Gemini API error (${res.status}): ${errorText}`);
+  }
+
+  const geminiData = await res.json();
+  const text = geminiData?.candidates?.[0]?.content?.parts
+    ?.map((p: { text?: string }) => p.text || '').join('') || '';
+
+  return {
+    id: `gemini-${Date.now()}`,
+    choices: [{
+      index: 0,
+      message: { content: text, role: 'assistant' },
+      finish_reason: 'stop',
+    }],
+    usage: {
+      prompt_tokens: geminiData?.usageMetadata?.promptTokenCount || 0,
+      completion_tokens: geminiData?.usageMetadata?.candidatesTokenCount || 0,
+      total_tokens: (geminiData?.usageMetadata?.promptTokenCount || 0) +
+                    (geminiData?.usageMetadata?.candidatesTokenCount || 0),
+    },
+    model: params.model,
+  };
 }

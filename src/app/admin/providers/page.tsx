@@ -16,6 +16,7 @@ interface Provider {
   api_key: string;
   default_model: string;
   provider_type: string;
+  roles: string[];
   reasoning_max_tokens: number | null;
   reasoning_strategy: string | null;
   reasoning_media_max_tokens: number | null;
@@ -24,7 +25,7 @@ interface Provider {
   created_at: string;
 }
 
-const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', reasoning_max_tokens: '', reasoning_strategy: '', reasoning_media_max_tokens: '', is_active: true };
+const emptyForm = { name: '', base_url: '', api_key: '', default_model: 'gpt-4o-mini', provider_type: 'generic', roles: ['text'] as string[], reasoning_max_tokens: '', reasoning_strategy: '', reasoning_media_max_tokens: '', is_active: true };
 
 export default function OwnerProviders() {
   const router = useRouter();
@@ -48,6 +49,23 @@ export default function OwnerProviders() {
   const [defaultTemperature, setDefaultTemperature] = useState('0.7');
   const [defaultMaxTokens, setDefaultMaxTokens] = useState('500');
 
+  const [mediaImageEnabled, setMediaImageEnabled] = useState(true);
+  const [mediaImageProviderType, setMediaImageProviderType] = useState('openrouter');
+  const [mediaImageModel, setMediaImageModel] = useState('openai/gpt-4o-mini');
+  const [mediaImageMaxSize, setMediaImageMaxSize] = useState('2048');
+  const [mediaImageMaxCount, setMediaImageMaxCount] = useState('3');
+  const [mediaImageFallbackText, setMediaImageFallbackText] = useState('[User sent an image]');
+
+  const [mediaVoiceEnabled, setMediaVoiceEnabled] = useState(true);
+  const [mediaVoiceProviderType, setMediaVoiceProviderType] = useState('openrouter');
+  const [mediaVoiceModel, setMediaVoiceModel] = useState('openai/whisper-large-v3-turbo');
+  const [mediaVoiceMaxSeconds, setMediaVoiceMaxSeconds] = useState('120');
+  const [mediaVoiceFallbackText, setMediaVoiceFallbackText] = useState('[User sent a voice message]');
+  const [pricing, setPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
+  const [pricingLoading, setPricingLoading] = useState(false);
+
+  const [savingMedia, setSavingMedia] = useState(false);
+
   const [testProviderId, setTestProviderId] = useState('');
   const [testModel, setTestModel] = useState('openai/gpt-4o-mini');
   const [testSystemPrompt, setTestSystemPrompt] = useState('');
@@ -68,10 +86,15 @@ export default function OwnerProviders() {
   }, []);
 
   async function loadData() {
-    const [provRes, settingsRes] = await Promise.all([
+    const [provRes, settingsRes, pricingRes] = await Promise.all([
       fetch('/api/admin/owner/providers'),
       fetch('/api/admin/owner/settings'),
+      fetch('/api/admin/owner/pricing'),
     ]);
+    if (pricingRes.ok) {
+      const pricingData = await pricingRes.json();
+      setPricing(pricingData.pricing || []);
+    }
     const provData = await provRes.json();
     const settingsData = await settingsRes.json();
     setProviders(provData.providers || []);
@@ -81,6 +104,19 @@ export default function OwnerProviders() {
     if (settingsData.default_conversation_memory_count !== undefined) setDefaultConvMemoryCount(String(settingsData.default_conversation_memory_count));
     if (settingsData.default_temperature !== undefined) setDefaultTemperature(String(settingsData.default_temperature));
     if (settingsData.default_max_tokens !== undefined) setDefaultMaxTokens(String(settingsData.default_max_tokens));
+
+    // Load media settings
+    if (settingsData.media_image_enabled !== undefined) setMediaImageEnabled(Boolean(settingsData.media_image_enabled));
+    if (settingsData.media_image_provider_type !== undefined) setMediaImageProviderType(String(settingsData.media_image_provider_type));
+    if (settingsData.media_image_model !== undefined) setMediaImageModel(String(settingsData.media_image_model));
+    if (settingsData.media_image_max_size !== undefined) setMediaImageMaxSize(String(settingsData.media_image_max_size));
+    if (settingsData.media_image_max_count !== undefined) setMediaImageMaxCount(String(settingsData.media_image_max_count));
+    if (settingsData.media_image_fallback_text !== undefined) setMediaImageFallbackText(String(settingsData.media_image_fallback_text));
+    if (settingsData.media_voice_enabled !== undefined) setMediaVoiceEnabled(Boolean(settingsData.media_voice_enabled));
+    if (settingsData.media_voice_provider_type !== undefined) setMediaVoiceProviderType(String(settingsData.media_voice_provider_type));
+    if (settingsData.media_voice_model !== undefined) setMediaVoiceModel(String(settingsData.media_voice_model));
+    if (settingsData.media_voice_max_seconds !== undefined) setMediaVoiceMaxSeconds(String(settingsData.media_voice_max_seconds));
+    if (settingsData.media_voice_fallback_text !== undefined) setMediaVoiceFallbackText(String(settingsData.media_voice_fallback_text));
   }
 
   function openAdd() {
@@ -97,6 +133,7 @@ export default function OwnerProviders() {
       api_key: '',
       default_model: p.default_model,
       provider_type: p.provider_type || 'generic',
+      roles: p.roles || ['text'],
       reasoning_max_tokens: p.reasoning_max_tokens !== null && p.reasoning_max_tokens !== undefined ? String(p.reasoning_max_tokens) : '',
       reasoning_strategy: p.reasoning_strategy || '',
       reasoning_media_max_tokens: p.reasoning_media_max_tokens !== null && p.reasoning_media_max_tokens !== undefined ? String(p.reasoning_media_max_tokens) : '',
@@ -191,6 +228,38 @@ export default function OwnerProviders() {
       setStatus({ type: 'error', text: e.message });
     } finally {
       setSavingAiDefaults(false);
+    }
+  }
+
+  async function handleSaveMedia() {
+    setSavingMedia(true);
+    setStatus(null);
+    try {
+      const body: Record<string, unknown> = {
+        media_image_enabled: mediaImageEnabled,
+        media_image_provider_type: mediaImageProviderType,
+        media_image_model: mediaImageModel,
+        media_image_max_size: parseInt(mediaImageMaxSize) || 2048,
+        media_image_max_count: parseInt(mediaImageMaxCount) || 3,
+        media_image_fallback_text: mediaImageFallbackText,
+        media_voice_enabled: mediaVoiceEnabled,
+        media_voice_provider_type: mediaVoiceProviderType,
+        media_voice_model: mediaVoiceModel,
+        media_voice_max_seconds: parseInt(mediaVoiceMaxSeconds) || 120,
+        media_voice_fallback_text: mediaVoiceFallbackText,
+      };
+      const res = await fetch('/api/admin/owner/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to save');
+      setStatus({ type: 'success', text: 'Media settings saved' });
+    } catch (e: any) {
+      setStatus({ type: 'error', text: e.message });
+    } finally {
+      setSavingMedia(false);
     }
   }
 
@@ -349,6 +418,63 @@ export default function OwnerProviders() {
         )}
       </div>
 
+      {/* Model Pricing */}
+      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Model Pricing</h3>
+            <p className="text-xs text-white/40 mt-0.5">Per-model token costs used for cost analytics</p>
+          </div>
+          <button onClick={async () => {
+            setPricingLoading(true);
+            try {
+              const res = await fetch('/api/admin/owner/pricing/fetch', { method: 'POST' });
+              if (res.ok) {
+                const data = await res.json();
+                alert(`Updated ${data.updated} model prices from OpenRouter`);
+                loadData();
+              }
+            } catch { alert('Failed to fetch pricing'); }
+            finally { setPricingLoading(false); }
+          }} disabled={pricingLoading}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-amber-500 hover:to-orange-500 disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${pricingLoading ? 'animate-spin' : ''}`} />
+            {pricingLoading ? 'Fetching...' : 'Fetch from OpenRouter'}
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
+                <th className="pb-3 pr-3 font-medium">Provider</th>
+                <th className="pb-3 pr-3 font-medium">Model</th>
+                <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
+                <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
+                <th className="pb-3 pr-3 font-medium">Source</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {pricing.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-sm text-white/30">
+                    No pricing data yet. Click "Fetch from OpenRouter" to auto-populate.
+                  </td>
+                </tr>
+              )}
+              {pricing.map((pr) => (
+                <tr key={pr.id} className="hover:bg-white/5 transition-colors">
+                  <td className="py-2.5 pr-3 text-sm text-white/70">{pr.ai_providers?.name || pr.provider_id}</td>
+                  <td className="py-2.5 pr-3 text-sm font-mono text-white/80">{pr.model_name}</td>
+                  <td className="py-2.5 pr-3 text-sm text-white/70">${Number(pr.input_price_per_1m_tokens).toFixed(4)}</td>
+                  <td className="py-2.5 pr-3 text-sm text-white/70">${Number(pr.output_price_per_1m_tokens).toFixed(4)}</td>
+                  <td className="py-2.5 text-sm text-white/40">{pr.is_auto_fetched ? 'Auto' : 'Manual'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* AI Defaults */}
       <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
         <div className="flex items-center justify-between mb-4">
@@ -406,6 +532,119 @@ export default function OwnerProviders() {
             <input type="number" min={50} max={4096} step={50} value={defaultMaxTokens} onChange={(e) => setDefaultMaxTokens(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
             <p className="text-xs text-white/30 mt-1">Max response length per reply</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Media Settings */}
+      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20">
+              <Camera className="h-5 w-5 text-cyan-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">Media Processing</h3>
+              <p className="text-xs text-white/40">Configure how images and voice messages are handled across all platforms</p>
+            </div>
+          </div>
+          <button onClick={handleSaveMedia} disabled={savingMedia}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50">
+            <Save className="h-4 w-4" /> {savingMedia ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Image Settings */}
+          <div className="rounded-xl border border-white/5 p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
+            <h4 className="text-xs font-semibold text-white/70 mb-3 flex items-center gap-2">
+              <Camera className="h-3.5 w-3.5 text-cyan-400" /> Image Processing
+            </h4>
+            <div className="space-y-4">
+              <label className="flex items-center gap-3 rounded-lg border border-white/10 p-3 cursor-pointer hover:bg-white/5 transition-colors">
+                <input type="checkbox" checked={mediaImageEnabled} onChange={(e) => setMediaImageEnabled(e.target.checked)}
+                  className="h-5 w-5 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-500/30" />
+                <div>
+                  <span className="text-sm font-medium text-white">Enable Image Processing</span>
+                  <p className="text-xs text-white/30">Send images to AI vision models for analysis</p>
+                </div>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Vision Model</label>
+                  <input value={mediaImageModel} onChange={(e) => setMediaImageModel(e.target.value)} placeholder="openai/gpt-4o-mini"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-cyan-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Provider Type</label>
+                  <select value={mediaImageProviderType} onChange={(e) => setMediaImageProviderType(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50">
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI Direct</option>
+                    <option value="google">Google Gemini</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Max Image Size (px)</label>
+                  <input type="number" min={256} max={4096} step={256} value={mediaImageMaxSize} onChange={(e) => setMediaImageMaxSize(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Max Images Per Message</label>
+                  <input type="number" min={1} max={10} value={mediaImageMaxCount} onChange={(e) => setMediaImageMaxCount(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-1 block">Fallback Text (when image fails)</label>
+                <input value={mediaImageFallbackText} onChange={(e) => setMediaImageFallbackText(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-cyan-500/50" />
+                <p className="text-xs text-white/30 mt-1">Replaces image in AI context when download fails</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Voice Settings */}
+          <div className="rounded-xl border border-white/5 p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
+            <h4 className="text-xs font-semibold text-white/70 mb-3 flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-teal-400" /> Voice Transcription
+            </h4>
+            <div className="space-y-4">
+              <label className="flex items-center gap-3 rounded-lg border border-white/10 p-3 cursor-pointer hover:bg-white/5 transition-colors">
+                <input type="checkbox" checked={mediaVoiceEnabled} onChange={(e) => setMediaVoiceEnabled(e.target.checked)}
+                  className="h-5 w-5 rounded border-white/20 bg-white/5 text-teal-500 focus:ring-teal-500/30" />
+                <div>
+                  <span className="text-sm font-medium text-white">Enable Voice Transcription</span>
+                  <p className="text-xs text-white/30">Transcribe voice messages using Whisper STT</p>
+                </div>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">STT Model</label>
+                  <input value={mediaVoiceModel} onChange={(e) => setMediaVoiceModel(e.target.value)} placeholder="openai/whisper-large-v3-turbo"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-teal-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Provider Type</label>
+                  <select value={mediaVoiceProviderType} onChange={(e) => setMediaVoiceProviderType(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-teal-500/50">
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI Direct</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-white/60 mb-1 block">Max Voice Duration (sec)</label>
+                  <input type="number" min={10} max={600} step={10} value={mediaVoiceMaxSeconds} onChange={(e) => setMediaVoiceMaxSeconds(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-teal-500/50" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-1 block">Fallback Text (when transcription fails)</label>
+                <input value={mediaVoiceFallbackText} onChange={(e) => setMediaVoiceFallbackText(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-teal-500/50" />
+                <p className="text-xs text-white/30 mt-1">Shown in AI context when voice transcription fails</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -588,6 +827,28 @@ export default function OwnerProviders() {
                   </div>
                 </div>
               </div>
+
+              {/* Roles checkboxes */}
+              <div>
+                <label className="text-xs font-medium text-white/60 mb-2 block">Provider Roles</label>
+                <div className="flex gap-4">
+                  {['text', 'vision', 'voice'].map(role => (
+                    <label key={role} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={form.roles.includes(role)}
+                        onChange={(e) => setForm(f => ({
+                          ...f,
+                          roles: e.target.checked
+                            ? [...f.roles, role]
+                            : f.roles.filter(r => r !== role),
+                        }))}
+                        className="h-4 w-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/30" />
+                      <span className="text-sm capitalize text-white/70">{role}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-white/30 mt-1">Text = AI replies, Vision = image analysis, Voice = voice transcription</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-white/60">Provider Type</label>
@@ -596,6 +857,7 @@ export default function OwnerProviders() {
                     <option value="generic">Generic (auto-detect)</option>
                     <option value="openrouter">OpenRouter</option>
                     <option value="deepseek">DeepSeek</option>
+                    <option value="google">Google Gemini</option>
                   </select>
                 </div>
                 {form.provider_type === 'openrouter' && (

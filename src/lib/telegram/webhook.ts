@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/crypto';
 import { sendTelegramMessage, sendTelegramTyping } from '@/lib/telegram/bot';
 import { handleAIResponse } from '@/lib/ai/handler';
+import { processTelegramMedia } from '@/lib/media/processors/telegram';
 import type { AISettings } from '@/types';
 
 interface TelegramUpdate {
@@ -53,15 +54,21 @@ const DEFAULT_AI_SETTINGS: AISettings = {
 };
 
 export async function processTelegramUpdate(update: TelegramUpdate, botId?: string): Promise<void> {
-  if (!update.message?.text || !update.message?.chat) {
-    console.warn('Telegram update skipped: no text or chat', { update_id: update.update_id });
+  if (!update.message?.chat) {
+    console.warn('Telegram update skipped: no chat', { update_id: update.update_id });
     return;
   }
 
   const supabase = await createAdminClient();
   const chatId = String(update.message.chat.id);
-  const messageText = update.message.text;
+  const messageText = update.message.text || '';
   const hasMedia = !!(update.message?.photo || update.message?.voice || update.message?.video || update.message?.document || update.message?.audio);
+
+  if (!messageText && !hasMedia) {
+    console.warn('Telegram update skipped: no text or media', { update_id: update.update_id });
+    return;
+  }
+
   const senderId = String(update.message.from?.id || chatId);
   const senderName = update.message.from?.first_name
     ? [update.message.from.first_name, update.message.from.last_name].filter(Boolean).join(' ')
@@ -125,6 +132,9 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
     return;
   }
 
+  // Process media attachments (needed before message saving for fallback text)
+  const telegramMediaBundle = hasMedia ? await processTelegramMedia(update.message as any, botToken) : null;
+
   const channelField = 'telegram_id';
   const channelDbId = matchedBot.id;
 
@@ -176,7 +186,7 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
   await supabase.from('messages').insert({
     conversation_id: conversationId,
     role: 'user',
-    content: messageText,
+    content: messageText || telegramMediaBundle?.fallbackText || '[attachment]',
     sent_via_ai: false,
   });
 
@@ -254,7 +264,7 @@ export async function processTelegramUpdate(update: TelegramUpdate, botId?: stri
       botToken,
       'telegram',
       aiSettings as AISettings,
-      hasMedia
+      telegramMediaBundle ?? undefined
     );
   } catch (error) {
     console.error('Telegram AI handler error:', error);

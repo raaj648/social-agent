@@ -5,12 +5,12 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Mail, Shield, Cpu, Save, Loader2, CheckCircle, Lock, Crown } from 'lucide-react';
+import { User, Mail, Shield, Cpu, Save, Loader2, CheckCircle, Lock, Crown, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { usePageTitle } from '@/lib/use-page-title';
 
 export default function ProfilePage() {
   usePageTitle('Profile');
-  const [profile, setProfile] = useState<{ id: string; full_name: string | null; email: string | null; plan: string; credits_remaining: number; credits_total: number; credits_expires_at: string | null; user_number: number } | null>(null);
+  const [profile, setProfile] = useState<{ id: string; full_name: string | null; email: string | null; plan: string; credits_remaining: number; credits_total: number; user_number: number } | null>(null);
   const [fullName, setFullName] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
@@ -19,6 +19,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [showUsageDetail, setShowUsageDetail] = useState(false);
+  const [usageData, setUsageData] = useState<any>(null);
   const supabase = createClient();
 
   useEffect(() => { loadProfile(); }, []);
@@ -31,7 +33,7 @@ export default function ProfilePage() {
 
       const { data: profile, error: profileError } = await supabase
         .from('users')
-        .select('id, full_name, email, plan, credits_remaining, credits_total, credits_expires_at, user_number')
+        .select('id, full_name, email, plan, credits_remaining, credits_total, user_number')
         .eq('id', user.id)
         .single();
 
@@ -40,6 +42,12 @@ export default function ProfilePage() {
         setProfile(profile);
         setFullName(profile.full_name || '');
       }
+
+      // Load usage summary quietly
+      try {
+        const usageRes = await fetch('/api/user/analytics?days=30');
+        setUsageData(await usageRes.json());
+      } catch { /* optional */ }
     } catch (e: any) {
       setLoadError(e.message || 'Failed to load profile');
     } finally {
@@ -162,7 +170,7 @@ export default function ProfilePage() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Credits Remaining</label>
             <Input value={`${profile.credits_remaining} / ${profile.credits_total}`} disabled className="opacity-60" />
-            <p className="text-xs text-muted-foreground">1 credit = 1 AI reply. {profile.credits_expires_at ? `Expires ${new Date(profile.credits_expires_at).toLocaleDateString()}` : 'No expiry'}</p>
+            <p className="text-xs text-muted-foreground">1 credit = 1 AI reply. Credits never expire.</p>
           </div>
 
           <div className="space-y-2">
@@ -233,6 +241,56 @@ export default function ProfilePage() {
             </div>
           </div>
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="cursor-pointer" onClick={() => setShowUsageDetail(!showUsageDetail)}>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className={`h-5 w-5 ${showUsageDetail ? 'text-amber-600' : 'text-muted-foreground'}`} />
+            Usage & Cost Details
+            {showUsageDetail ? <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground" /> : <ChevronDown className="h-4 w-4 ml-auto text-muted-foreground" />}
+          </CardTitle>
+        </CardHeader>
+        {showUsageDetail && usageData && (
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Credits are a simplified cost. Real AI provider token costs are shown below for transparency.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-xl bg-muted/30 p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Credits Used (30d)</p>
+                <p className="text-2xl font-bold text-violet-600">{usageData.usage.totalPoints.toLocaleString()} <span className="text-sm text-muted-foreground">cr</span></p>
+              </div>
+              <div className="rounded-xl bg-muted/30 p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-1">AI Cost (30d)</p>
+                <p className="text-2xl font-bold text-amber-600">${usageData.usage.totalCost.toFixed(4)}</p>
+              </div>
+              <div className="rounded-xl bg-muted/30 p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-1">AI Calls (30d)</p>
+                <p className="text-2xl font-bold">{usageData.usage.totalCalls.toLocaleString()}</p>
+              </div>
+            </div>
+            {usageData.pointCosts && (
+              <div className="rounded-xl bg-muted/20 p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Credit Cost Per Action</p>
+                <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                  <div className="rounded-lg bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700">
+                    <span className="block font-medium">Text</span>
+                    <span className="text-violet-600">{usageData.pointCosts.text_reply} cr</span>
+                  </div>
+                  <div className="rounded-lg bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700">
+                    <span className="block font-medium">Image</span>
+                    <span className="text-violet-600">{usageData.pointCosts.image_read} cr</span>
+                  </div>
+                  <div className="rounded-lg bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700">
+                    <span className="block font-medium">Voice</span>
+                    <span className="text-violet-600">{usageData.pointCosts.voice_read} cr</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {error && (

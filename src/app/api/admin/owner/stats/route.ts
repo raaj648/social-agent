@@ -25,6 +25,12 @@ export async function GET() {
       dailyStatsResult,
       planDistResult,
       topUsersResult,
+      costTodayResult,
+      costAllResult,
+      pointsTodayResult,
+      pointsAllResult,
+      subResult,
+      revenueResult,
     ] = await Promise.all([
       supabase.from('users').select('*', { count: 'exact', head: true }),
       supabase.from('conversations').select('*', { count: 'exact', head: true }),
@@ -45,6 +51,21 @@ export async function GET() {
         .select('id, email, full_name, plan, is_active, created_at')
         .order('created_at', { ascending: false })
         .limit(5),
+      supabase.from('usage_logs')
+        .select('total_cost')
+        .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
+      supabase.from('usage_logs')
+        .select('total_cost'),
+      supabase.from('usage_logs')
+        .select('points_charged')
+        .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
+      supabase.from('usage_logs')
+        .select('points_charged'),
+      supabase.from('user_subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active'),
+      supabase.from('user_subscriptions')
+        .select('plan_id'),
     ]);
 
     const planDistribution: Record<string, number> = {};
@@ -62,6 +83,28 @@ export async function GET() {
     const aiRepliesToday = usageToday.filter((l) => l.action === 'ai_reply').length;
     const tokensToday = usageToday.reduce((sum, l) => sum + (l.tokens_used || 0), 0);
     const totalTokens = usageTotal.reduce((sum, l) => sum + (l.tokens_used || 0), 0);
+
+    const costToday = (costTodayResult.data || []).reduce((s: number, r: any) => s + (r.total_cost || 0), 0);
+    const totalCost = (costAllResult.data || []).reduce((s: number, r: any) => s + (r.total_cost || 0), 0);
+    const pointsToday = (pointsTodayResult.data || []).reduce((s: number, r: any) => s + (r.points_charged || 0), 0);
+    const totalPointsCharged = (pointsAllResult.data || []).reduce((s: number, r: any) => s + (r.points_charged || 0), 0);
+
+    const activeSubscriptions = subResult.count || 0;
+
+    // Approximate monthly revenue from active subscriptions
+    const subPlanIds = (revenueResult.data || []).map((r: any) => r.plan_id).filter(Boolean);
+    let monthlyRevenue = 0;
+    if (subPlanIds.length > 0) {
+      const { data: subPlans } = await supabase
+        .from('billing_plans')
+        .select('id, price_monthly_cents')
+        .in('id', subPlanIds);
+      if (subPlans) {
+        for (const sp of subPlans) {
+          monthlyRevenue += sp.price_monthly_cents || 0;
+        }
+      }
+    }
 
     const modelBreakdown: Record<string, number> = {};
     for (const m of modelLogs) {
@@ -94,6 +137,12 @@ export async function GET() {
         aiRepliesToday,
         tokensToday,
         totalTokens,
+        costToday: Math.round(costToday * 100) / 100,
+        totalCost: Math.round(totalCost * 100) / 100,
+        pointsToday,
+        totalPointsCharged,
+        activeSubscriptions,
+        monthlyRevenue,
         facebookPages: fbCount || 0,
         instagramAccounts: igCount || 0,
         whatsappAccounts: waCount || 0,

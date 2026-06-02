@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
         max_pages: body.max_pages,
         allowed_models: body.allowed_models || [],
         features: body.features || [],
+        allowed_actions: body.allowed_actions || ['text_reply', 'image_read', 'voice_read'],
         is_popular: body.is_popular || false,
         sort_order: body.sort_order,
       })

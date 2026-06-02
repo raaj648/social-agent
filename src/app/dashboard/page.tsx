@@ -7,7 +7,8 @@ import { useRealtimeDashboard } from '@/lib/hooks/use-realtime-dashboard';
 import Link from 'next/link';
 import {
   MessageSquare, Facebook, Instagram, MessageCircle, Zap, TrendingUp,
-  Users, Bot, ArrowRight, CheckCircle2, Clock, Cpu, Copy, Check
+  Users, Bot, ArrowRight, CheckCircle2, Clock, Cpu, Copy, Check,
+  ChevronDown, ChevronUp, DollarSign, Crown, BarChart3,
 } from 'lucide-react';
 import { CopyButton } from '@/components/ui/copy-button';
 
@@ -27,6 +28,12 @@ export default function DashboardPage() {
   }, [supabase, router]);
 
   const { loading, profile, pageCount, igCount, waCount, conversationCount, recentConversations } = useRealtimeDashboard();
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [showTokenDetails, setShowTokenDetails] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/user/analytics?days=30').then(r => r.json()).then(setAnalyticsData).catch(() => {});
+  }, []);
 
   if (loading) return null;
 
@@ -122,6 +129,108 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* Points & Plan */}
+      {analyticsData && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+            <h3 className="flex items-center gap-2 text-lg font-semibold mb-4">
+              <BarChart3 className="h-5 w-5 text-violet-600" />
+              Credits Usage (30 days)
+            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-muted-foreground">Credits Balance</span>
+              <span className="text-2xl font-bold">{analyticsData.profile?.credits_remaining ?? '—'} / {analyticsData.profile?.credits_total ?? '—'}</span>
+              <span className="text-sm text-muted-foreground ml-2">credits</span>
+            </div>
+            <div className="h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden mb-6">
+              <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-600 transition-all" style={{ width: `${Math.min(((analyticsData.profile?.credits_remaining ?? 0) / Math.max(analyticsData.profile?.credits_total ?? 1, 1)) * 100, 100)}%` }} />
+            </div>
+            {analyticsData.actionBreakdown && analyticsData.actionBreakdown.length > 0 ? (
+              <div className="space-y-2">
+                {analyticsData.actionBreakdown.map((a: any) => (
+                  <div key={a.type} className="flex items-center justify-between rounded-xl bg-muted/30 px-4 py-2.5">
+                    <span className="text-sm capitalize text-muted-foreground">{a.type.replace(/_/g, ' ')}</span>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span>{a.count} calls</span>
+                      <span className="font-medium text-violet-600">{a.points} cr</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between rounded-xl bg-violet-50 dark:bg-violet-950/30 px-4 py-2.5">
+                  <span className="text-sm font-medium">Total Used</span>
+                  <span className="text-sm font-bold text-violet-600">
+                    {analyticsData.actionBreakdown.reduce((s: number, a: any) => s + a.points, 0)} of {analyticsData.profile?.credits_total ?? 0} cr
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-6 text-center">No usage data this period</p>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="flex items-center gap-2 text-lg font-semibold mb-4">
+                <Crown className="h-5 w-5 text-amber-500" />
+                Current Plan
+              </h3>
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`rounded-full bg-gradient-to-r ${planGradient} px-3 py-1 text-xs font-bold uppercase tracking-wider text-white`}>
+                  {analyticsData.current_plan?.name || planVal || 'free'}
+                </span>
+                {analyticsData.current_plan?.price_monthly_cents > 0 && (
+                  <span className="text-sm text-muted-foreground">${(analyticsData.current_plan.price_monthly_cents / 100).toFixed(2)}/month</span>
+                )}
+              </div>
+              {analyticsData.subscription ? (
+                <div className="space-y-1.5 text-sm text-muted-foreground">
+                  <p>Status: <span className="capitalize font-medium text-green-600">{analyticsData.subscription.status}</span></p>
+                  <p>Credits: {analyticsData.subscription.points_used} used of {analyticsData.subscription.points_allocated} allocated</p>
+                  {analyticsData.subscription.end_date && <p>Renewal: {new Date(analyticsData.subscription.end_date).toLocaleDateString()}</p>}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No active subscription</p>
+              )}
+              <Link href="/dashboard/billing" className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-muted px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Manage Plan <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            {/* Token transparency */}
+            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <button onClick={() => setShowTokenDetails(!showTokenDetails)} className="flex w-full items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold">Real AI Token Usage</h3>
+                </div>
+                {showTokenDetails ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {showTokenDetails && (
+                <div className="px-6 pb-4 space-y-3">
+                  <p className="text-sm text-muted-foreground">Your plan uses a simplified point system for easy tracking. Real AI token costs vary by model and complexity.</p>
+                  {analyticsData.actionBreakdown && analyticsData.actionBreakdown.length > 0 ? (
+                    <div className="space-y-2">
+                      {analyticsData.actionBreakdown.map((a: any) => (
+                        <div key={a.type} className="flex items-center justify-between rounded-xl bg-muted/30 px-4 py-2.5 text-sm">
+                          <span className="capitalize text-muted-foreground">{a.type.replace(/_/g, ' ')}</span>
+                          <span className="font-mono font-medium">{a.calls > 0 ? `${Math.round((analyticsData.usage?.totalTokens || 0) / a.calls * 100)} tokens/call` : '—'}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5 text-sm">
+                        <span className="font-medium">Total cost (30d):</span>
+                        <span className="font-bold text-amber-600">${analyticsData.usage?.totalCost?.toFixed(4) || '0.0000'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No token data available yet.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Getting Started + Recent Conversations */}
       <div className="grid gap-6 lg:grid-cols-2">
