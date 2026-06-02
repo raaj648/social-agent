@@ -7,7 +7,7 @@ import {
   Save, Settings, ExternalLink, RefreshCw,
   CheckCircle, AlertCircle, Shield, Globe,
   CreditCard, Key, Plus, Trash2, X, Edit3, Gamepad2, Banknote,
-  ShoppingBag, Check,
+  ShoppingBag, Check, Cpu,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BillingPlan } from '@/types';
@@ -82,6 +82,10 @@ export default function AdminSettingsPage() {
   const [purchaseFilter, setPurchaseFilter] = useState('pending');
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
+  const [modelPricing, setModelPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
+  const [allProviders, setAllProviders] = useState<Array<{ id: string; name: string }>>([]);
+  const [modelPricingSaving, setModelPricingSaving] = useState(false);
+
   useEffect(() => { checkAdminAndLoad(); }, []);
 
   async function checkAdminAndLoad() {
@@ -138,6 +142,14 @@ export default function AdminSettingsPage() {
 
       // Load purchases
       loadPurchases();
+
+      // Load model pricing
+      const mpRes = await fetch('/api/admin/owner/pricing');
+      if (mpRes.ok) { const mpData = await mpRes.json(); setModelPricing(mpData.pricing || []); }
+
+      // Load providers (for model pricing dropdown)
+      const provRes = await fetch('/api/admin/owner/providers');
+      if (provRes.ok) { const provData = await provRes.json(); setAllProviders((provData.providers || []).map((p: any) => ({ id: p.id, name: p.name }))); }
     } catch (e) { console.error('Failed to load settings', e); }
     setLoading(false);
   }
@@ -529,6 +541,160 @@ export default function AdminSettingsPage() {
                 <input type="number" min={1} value={pointCostVoice} onChange={(e) => setPointCostVoice(parseInt(e.target.value) || 1)}
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
               </div>
+            </div>
+          </div>
+
+          {/* Model Pricing */}
+          <div className="rounded-2xl border border-white/10 p-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Cpu className="h-4 w-4 text-violet-400" /> Model Pricing</h3>
+                <p className="text-xs text-white/40 mt-0.5">Per-model token costs used for cost analytics. Set prices for any provider.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={async () => {
+                  setModelPricingSaving(true);
+                  try {
+                    const res = await fetch('/api/admin/owner/pricing/fetch', { method: 'POST' });
+                    if (res.ok) {
+                      const d = await res.json();
+                      toast.success(`Updated ${d.updated} model prices from OpenRouter`);
+                      checkAdminAndLoad();
+                    } else toast.error('Failed to fetch pricing');
+                  } catch { toast.error('Failed to fetch pricing'); }
+                  finally { setModelPricingSaving(false); }
+                }} disabled={modelPricingSaving}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-amber-500 hover:to-orange-500 disabled:opacity-50">
+                  <RefreshCw className={`h-4 w-4 ${modelPricingSaving ? 'animate-spin' : ''}`} />
+                  {modelPricingSaving ? 'Fetching...' : 'Fetch from OpenRouter'}
+                </button>
+                <button onClick={() => {
+                  const newRow = { id: '', provider_id: allProviders[0]?.id || '', model_name: '', input_price_per_1m_tokens: 0, output_price_per_1m_tokens: 0, is_auto_fetched: false, ai_providers: undefined, _isNew: true };
+                  setModelPricing(prev => [...prev, newRow as any]);
+                }} disabled={allProviders.length === 0}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-violet-500 hover:to-purple-500 disabled:opacity-50">
+                  <Plus className="h-4 w-4" /> Add Model
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
+                    <th className="pb-3 pr-3 font-medium">Provider</th>
+                    <th className="pb-3 pr-3 font-medium">Model</th>
+                    <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
+                    <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
+                    <th className="pb-3 pr-3 font-medium">Source</th>
+                    <th className="pb-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {modelPricing.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-sm text-white/30">
+                        No pricing data yet. Click "Fetch from OpenRouter" or "Add Model" to add prices.
+                      </td>
+                    </tr>
+                  )}
+                  {modelPricing.map((pr, idx) => (
+                    <tr key={pr.id || `new-${idx}`} className="hover:bg-white/5 transition-colors">
+                      <td className="py-2.5 pr-3">
+                        <select value={pr.provider_id} onChange={(e) => {
+                          const updated = [...modelPricing];
+                          updated[idx] = { ...updated[idx], provider_id: e.target.value };
+                          setModelPricing(updated);
+                        }}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50">
+                          {allProviders.map(p => (
+                            <option key={p.id} value={p.id} className="bg-gray-900">{p.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <input value={pr.model_name} onChange={(e) => {
+                          const updated = [...modelPricing];
+                          updated[idx] = { ...updated[idx], model_name: e.target.value };
+                          setModelPricing(updated);
+                        }} placeholder="e.g. openai/gpt-4o"
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-violet-500/50 font-mono" />
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <input type="number" step={0.000001} min={0} value={pr.input_price_per_1m_tokens} onChange={(e) => {
+                          const updated = [...modelPricing];
+                          updated[idx] = { ...updated[idx], input_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
+                          setModelPricing(updated);
+                        }}
+                          className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" />
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <input type="number" step={0.000001} min={0} value={pr.output_price_per_1m_tokens} onChange={(e) => {
+                          const updated = [...modelPricing];
+                          updated[idx] = { ...updated[idx], output_price_per_1m_tokens: parseFloat(e.target.value) || 0 };
+                          setModelPricing(updated);
+                        }}
+                          className="w-24 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none focus:border-violet-500/50" />
+                      </td>
+                      <td className="py-2.5 pr-3 text-sm text-white/40">{pr.is_auto_fetched ? 'Auto' : 'Manual'}</td>
+                      <td className="py-2.5">
+                        <div className="flex gap-1">
+                          <button onClick={async () => {
+                            // Save single row
+                            if (!pr.provider_id || !pr.model_name.trim()) { toast.error('Provider and model required'); return; }
+                            setModelPricingSaving(true);
+                            try {
+                              const res = await fetch('/api/admin/owner/pricing', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ pricing: [{
+                                  provider_id: pr.provider_id,
+                                  model_name: pr.model_name.trim(),
+                                  input_price_per_1m_tokens: pr.input_price_per_1m_tokens,
+                                  output_price_per_1m_tokens: pr.output_price_per_1m_tokens,
+                                  is_auto_fetched: false,
+                                }]}),
+                              });
+                              if (res.ok) {
+                                toast.success('Pricing saved');
+                                checkAdminAndLoad();
+                              } else toast.error('Failed to save');
+                            } catch { toast.error('Failed to save'); }
+                            finally { setModelPricingSaving(false); }
+                          }} disabled={modelPricingSaving}
+                            className="rounded-lg bg-white/5 p-1.5 text-white/40 hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors" title="Save">
+                            <Save className="h-3.5 w-3.5" />
+                          </button>
+                          {pr.id && (
+                            <button onClick={async () => {
+                              if (!confirm('Delete this model pricing?')) return;
+                              // Since there's no DELETE endpoint, we'll just remove from UI
+                              // and rely on the PUT to not include it. For DB cleanup, we use a helper.
+                              const res = await fetch('/api/admin/owner/pricing', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ pricing: modelPricing.filter(p => p.id !== pr.id).map(p => ({
+                                  provider_id: p.provider_id,
+                                  model_name: p.model_name,
+                                  input_price_per_1m_tokens: p.input_price_per_1m_tokens,
+                                  output_price_per_1m_tokens: p.output_price_per_1m_tokens,
+                                  is_auto_fetched: p.is_auto_fetched,
+                                })) }),
+                              });
+                              if (res.ok) {
+                                toast.success('Deleted');
+                                checkAdminAndLoad();
+                              } else toast.error('Failed to delete');
+                            }}
+                              className="rounded-lg bg-white/5 p-1.5 text-white/40 hover:bg-red-500/20 hover:text-red-400 transition-colors" title="Delete">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 

@@ -39,24 +39,21 @@ export async function checkRateLimit(
 
 export async function checkCredits(
   userId: string
-): Promise<{ allowed: boolean; remaining: number; total: number; expiresAt: string | null }> {
+): Promise<{ allowed: boolean; remaining: number; total: number }> {
   const supabase = await createAdminClient();
 
   const { data: user, error } = await supabase
     .from('users')
-    .select('credits_remaining, credits_total, credits_expires_at')
+    .select('credits_remaining, credits_total')
     .eq('id', userId)
     .single();
 
   if (error || !user) throw error;
 
-  const expired = user.credits_expires_at && new Date(user.credits_expires_at) < new Date();
-
   return {
-    allowed: user.credits_remaining > 0 && !expired,
+    allowed: user.credits_remaining > 0,
     remaining: user.credits_remaining,
     total: user.credits_total,
-    expiresAt: user.credits_expires_at,
   };
 }
 

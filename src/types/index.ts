@@ -8,7 +8,6 @@ export interface UserProfile {
   plan: 'free' | 'starter' | 'pro' | 'enterprise';
   credits_remaining: number;
   credits_total: number;
-  credits_expires_at: string | null;
   business_name: string | null;
   order_method: 'direct_chat' | 'website' | 'form';
   order_link: string | null;

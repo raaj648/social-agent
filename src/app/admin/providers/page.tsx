@@ -42,7 +42,6 @@ export default function OwnerProviders() {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [defaultFreeCredits, setDefaultFreeCredits] = useState('50');
-  const [defaultCreditsExpiryDays, setDefaultCreditsExpiryDays] = useState('30');
 
   const [savingAiDefaults, setSavingAiDefaults] = useState(false);
   const [defaultConvMemoryCount, setDefaultConvMemoryCount] = useState('10');
@@ -61,8 +60,7 @@ export default function OwnerProviders() {
   const [mediaVoiceModel, setMediaVoiceModel] = useState('openai/whisper-large-v3-turbo');
   const [mediaVoiceMaxSeconds, setMediaVoiceMaxSeconds] = useState('120');
   const [mediaVoiceFallbackText, setMediaVoiceFallbackText] = useState('[User sent a voice message]');
-  const [pricing, setPricing] = useState<Array<{ id: string; provider_id: string; model_name: string; input_price_per_1m_tokens: number; output_price_per_1m_tokens: number; is_auto_fetched: boolean; ai_providers?: { name: string } }>>([]);
-  const [pricingLoading, setPricingLoading] = useState(false);
+
 
   const [savingMedia, setSavingMedia] = useState(false);
 
@@ -86,21 +84,15 @@ export default function OwnerProviders() {
   }, []);
 
   async function loadData() {
-    const [provRes, settingsRes, pricingRes] = await Promise.all([
+    const [provRes, settingsRes] = await Promise.all([
       fetch('/api/admin/owner/providers'),
       fetch('/api/admin/owner/settings'),
-      fetch('/api/admin/owner/pricing'),
     ]);
-    if (pricingRes.ok) {
-      const pricingData = await pricingRes.json();
-      setPricing(pricingData.pricing || []);
-    }
     const provData = await provRes.json();
     const settingsData = await settingsRes.json();
     setProviders(provData.providers || []);
     setMasterPrompt(settingsData.master_prompt || '');
     if (settingsData.default_free_credits !== undefined) setDefaultFreeCredits(String(settingsData.default_free_credits));
-    if (settingsData.default_credits_expiry_days !== undefined) setDefaultCreditsExpiryDays(String(settingsData.default_credits_expiry_days));
     if (settingsData.default_conversation_memory_count !== undefined) setDefaultConvMemoryCount(String(settingsData.default_conversation_memory_count));
     if (settingsData.default_temperature !== undefined) setDefaultTemperature(String(settingsData.default_temperature));
     if (settingsData.default_max_tokens !== undefined) setDefaultMaxTokens(String(settingsData.default_max_tokens));
@@ -210,7 +202,6 @@ export default function OwnerProviders() {
     try {
       const body: Record<string, unknown> = {
         default_free_credits: parseInt(defaultFreeCredits) || 50,
-        default_credits_expiry_days: parseInt(defaultCreditsExpiryDays) || 30,
         default_conversation_memory_count: parseInt(defaultConvMemoryCount) || 10,
         default_temperature: parseFloat(defaultTemperature) || 0.7,
         default_max_tokens: parseInt(defaultMaxTokens) || 500,
@@ -418,63 +409,6 @@ export default function OwnerProviders() {
         )}
       </div>
 
-      {/* Model Pricing */}
-      <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-sm font-semibold text-white">Model Pricing</h3>
-            <p className="text-xs text-white/40 mt-0.5">Per-model token costs used for cost analytics</p>
-          </div>
-          <button onClick={async () => {
-            setPricingLoading(true);
-            try {
-              const res = await fetch('/api/admin/owner/pricing/fetch', { method: 'POST' });
-              if (res.ok) {
-                const data = await res.json();
-                alert(`Updated ${data.updated} model prices from OpenRouter`);
-                loadData();
-              }
-            } catch { alert('Failed to fetch pricing'); }
-            finally { setPricingLoading(false); }
-          }} disabled={pricingLoading}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-amber-500 hover:to-orange-500 disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${pricingLoading ? 'animate-spin' : ''}`} />
-            {pricingLoading ? 'Fetching...' : 'Fetch from OpenRouter'}
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs text-white/40 uppercase tracking-wider">
-                <th className="pb-3 pr-3 font-medium">Provider</th>
-                <th className="pb-3 pr-3 font-medium">Model</th>
-                <th className="pb-3 pr-3 font-medium">Input (per 1M)</th>
-                <th className="pb-3 pr-3 font-medium">Output (per 1M)</th>
-                <th className="pb-3 pr-3 font-medium">Source</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {pricing.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-white/30">
-                    No pricing data yet. Click "Fetch from OpenRouter" to auto-populate.
-                  </td>
-                </tr>
-              )}
-              {pricing.map((pr) => (
-                <tr key={pr.id} className="hover:bg-white/5 transition-colors">
-                  <td className="py-2.5 pr-3 text-sm text-white/70">{pr.ai_providers?.name || pr.provider_id}</td>
-                  <td className="py-2.5 pr-3 text-sm font-mono text-white/80">{pr.model_name}</td>
-                  <td className="py-2.5 pr-3 text-sm text-white/70">${Number(pr.input_price_per_1m_tokens).toFixed(4)}</td>
-                  <td className="py-2.5 pr-3 text-sm text-white/70">${Number(pr.output_price_per_1m_tokens).toFixed(4)}</td>
-                  <td className="py-2.5 text-sm text-white/40">{pr.is_auto_fetched ? 'Auto' : 'Manual'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* AI Defaults */}
       <div className="rounded-2xl border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)' }}>
         <div className="flex items-center justify-between mb-4">
@@ -492,7 +426,7 @@ export default function OwnerProviders() {
             <Save className="h-4 w-4" /> {savingAiDefaults ? 'Saving...' : 'Save'}
           </button>
         </div>
-        <div className="grid gap-4 sm:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-4">
           <div>
             <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
               <Users className="h-3 w-3 text-green-400" /> Default Free Credits
@@ -500,14 +434,6 @@ export default function OwnerProviders() {
             <input type="number" min={0} value={defaultFreeCredits} onChange={(e) => setDefaultFreeCredits(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
             <p className="text-xs text-white/30 mt-1">Credits given to new users on signup</p>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">
-              <Users className="h-3 w-3 text-amber-400" /> Credit Expiry (days)
-            </label>
-            <input type="number" min={0} value={defaultCreditsExpiryDays} onChange={(e) => setDefaultCreditsExpiryDays(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-violet-500/50" />
-            <p className="text-xs text-white/30 mt-1">Days until free credits expire (0 = no expiry)</p>
           </div>
           <div>
             <label className="text-xs font-medium text-white/60 flex items-center gap-1.5 mb-1.5">

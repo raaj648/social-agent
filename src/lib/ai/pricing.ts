@@ -24,6 +24,10 @@ export function getModelPrice(
   const hardcoded = DEFAULT_PRICING[modelName];
   if (hardcoded) return hardcoded;
 
+  const baseName = modelName.includes('/') ? modelName.split('/').pop()! : modelName;
+  const baseHardcoded = DEFAULT_PRICING[baseName];
+  if (baseHardcoded) return baseHardcoded;
+
   return { input: 0, output: 0 };
 }
 
